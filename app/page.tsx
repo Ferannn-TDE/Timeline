@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type SupabaseClient, type User } from "@supabase/supabase-js";
-import WordSync from "./word-sync";
+import DocsSync from "./docs-sync";
 import { getJournalClient } from "@/lib/client";
 
 import { APPROVED_EMAILS, addEntry, editEntry, deleteEntry, loadEntries, errorMessage, type Entry } from "@/lib/journal";
 
 export default function Home(){
   const db = getJournalClient();
-  const [wordState,setWordState]=useState("Word not connected");
+  const [googleReady,setGoogleReady]=useState(false),[providerChecked,setProviderChecked]=useState(false),[providerAvailable,setProviderAvailable]=useState(true);
+  const [docsState,setDocsState]=useState("Google Docs not connected");
   const [user,setUser]=useState<User|null>(null),[checking,setChecking]=useState(true),[member,setMember]=useState(false);
   const [entries,setEntries]=useState<Entry[]>([]),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
   const [error,setError]=useState(""),[message,setMessage]=useState(""),[email,setEmail]=useState("");
@@ -45,7 +46,7 @@ export default function Home(){
       if(!active)return;
       ++authVersion;
       if(activeAccount.current!== (session?.user.id || null)){
-        ++refreshVersion.current;setEntries([]);setMember(false);setEditing(null);setPhoto(null);setDate("");setCaption("");setMessage("");setLoading(false);setWordState("Word not connected");
+        ++refreshVersion.current;setEntries([]);setMember(false);setEditing(null);setPhoto(null);setDate("");setCaption("");setMessage("");setLoading(false);setDocsState("Google Docs not connected");
       }
       activeAccount.current=session?.user.id || null;
       setUser(session?.user || null);
@@ -58,6 +59,11 @@ export default function Home(){
     document.addEventListener("visibilitychange",onVisible);
     return()=>{active=false;++refreshVersion.current;activeAccount.current=null;listener.subscription.unsubscribe();clearInterval(timer);document.removeEventListener("visibilitychange",onVisible)};
   },[db,refresh]);
+  useEffect(()=>{let active=true;void fetch("/api/auth/providers",{cache:"no-store"}).then(r=>r.json()).then(data=>{if(active){setGoogleReady(data.google===true);setProviderAvailable(data.available!==false);setProviderChecked(true)}}).catch(()=>{if(active){setProviderAvailable(false);setProviderChecked(true)}});return()=>{active=false}},[]);
+  async function signInGoogle(){if(!db||busy||!googleReady)return;setBusy(true);setError("");setMessage("");try{
+    const {data,error:authError}=await db.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin,queryParams:{prompt:"select_account",include_granted_scopes:"false"},skipBrowserRedirect:true}});
+    if(authError)throw authError;if(!data.url)throw Error("Google sign-in could not start.");window.location.assign(data.url);
+  }catch(e){setError(errorMessage(e,"Could not sign in with Google."));setBusy(false)}}
   useEffect(()=>{if(!photo){setPreview("");return}const local=URL.createObjectURL(photo);setPreview(local);return()=>URL.revokeObjectURL(local)},[photo]);
   async function signIn(e:React.FormEvent){e.preventDefault();if(!db||busy)return;setBusy(true);setError("");setMessage("");try{
     const normalizedEmail=email.trim().toLowerCase();
@@ -97,11 +103,15 @@ export default function Home(){
   return <div className="shell">
     <header className="bar"><span className="mark">M</span><strong>Moments <small>shared timeline</small></strong>
       {user&&<button className="signout" disabled={busy} onClick={signOut}>Sign out</button>}
-      <span className="pending">{wordState}</span>
+      <span className="pending">{docsState}</span>
     </header>
     {!db?<main className="auth"><h1>Set up the journal</h1><p>Add your Supabase URL and publishable key to the environment before using this site.</p></main>:
     checking?<main className="auth">Opening your journal…</main>:
-    !user?<main className="auth"><div className="eyebrow">SHARED PHOTO JOURNAL</div><h1>Sign in to Moments</h1><p>Enter your email. We’ll send a link to open the timeline.</p>
+    !user?<main className="auth"><div className="eyebrow">SHARED PHOTO JOURNAL</div><h1>Sign in to Moments</h1><p>Sign in with your approved Google account to open the shared timeline.</p>
+      <button className="primary google-signin" type="button" disabled={busy||!googleReady} onClick={signInGoogle}>Sign in with Google</button>
+      {!googleReady&&<p aria-live="polite">{providerChecked?(providerAvailable?"Google sign-in setup is pending.":"Google sign-in is temporarily unavailable."):"Checking Google sign-in…"}</p>}
+      <p className="footnote">Only feranmidyro@gmail.com and kieragreen50@gmail.com can access this journal.</p>
+      <p className="auth-alternative">Or request an email sign-in link</p>
       <form onSubmit={signIn}><label className="fieldlabel" htmlFor="email">Email address</label><input id="email" className="field" type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/><button className="primary" disabled={busy}>{busy?"Sending…":"Send sign-in link"}</button></form>
       {error&&<div className="notice error" role="alert">{error}</div>}{message&&<div className="notice success" role="status">{message}</div>}</main>:
     !member?<main className="auth"><h1>Access not enabled yet</h1><p>You’re signed in as {user.email}. This journal is available only to its two approved editors.</p><button className="primary" onClick={()=>refresh(db,user)}>Check access</button>{error&&<div className="notice error">{error}</div>}</main>:
@@ -113,7 +123,7 @@ export default function Home(){
         <label className="fieldlabel" htmlFor="date">Date of photo</label><input className="field" id="date" type="date" value={date} onChange={e=>setDate(e.target.value)} required/>
         <label className="fieldlabel" htmlFor="caption">Caption</label><textarea className="field caption" id="caption" placeholder="What happened in this moment?" maxLength={2000} value={caption} onChange={e=>setCaption(e.target.value)} required/>
         <button className="primary" disabled={busy||!photo}>{busy?"Adding…":"Add to timeline"}</button></form>
-        <WordSync key={user.id} db={db} revision={entries.map(entry=>entry.id+entry.photo_date+entry.caption).join("|")} onState={setWordState}/>
+        <DocsSync key={user.id} db={db} revision={entries.map(entry=>entry.id+entry.photo_date+entry.caption).join("|")} onState={setDocsState}/>
       </aside>
       <section className="feed" aria-label="Photo timeline"><div className="feedhead"><div><div className="eyebrow">PHOTO JOURNAL</div><h2>Our story</h2></div><button className="refresh" disabled={busy||loading} onClick={()=>refresh(db,user)}>Refresh</button><span className="count">{entries.length} {entries.length===1?"memory":"memories"}</span></div>
         {error&&<div className="notice error" role="alert">{error}</div>}{message&&<div className="notice success" role="status">{message}</div>}

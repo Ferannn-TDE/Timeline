@@ -7,13 +7,11 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-transform-types --test tests/journal.test.ts tests/word.test.ts",
+    "test": "node --experimental-transform-types --test tests/journal.test.ts tests/docs.test.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
-    "@xmldom/xmldom": "^0.9.12",
-    "fflate": "^0.8.3",
     "next": "16.3.4",
     "react": "19.2.6",
     "react-dom": "19.2.6",

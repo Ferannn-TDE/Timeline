@@ -1,75 +1,85 @@
-# Remaining account access
+# Google sign-in and Google Docs setup
 
-The application code does not substitute for Microsoft consent or SMTP sender ownership.
-Secrets belong in ignored `.credentials` files (directory mode 700, files mode 600),
-Supabase secure settings, and Vercel **Production** server environment variables.
-Never paste a secret into chat, Git, or a `NEXT_PUBLIC_` variable.
+Live provider configuration and consent are required. The sharing link alone does
+not authorize writes. The previous Microsoft document is no longer contacted.
 
-## Microsoft / SIUE
+## Google Cloud account steps
 
-Sign in to https://entra.microsoft.com with the SIUE document owner's account.
-Under **App registrations → New registration**, register **Moments Timeline**
-for the university tenant. Add a **Web** redirect URI:
+1. Open https://console.cloud.google.com and select/create a project. Enable
+   **Google Docs API**, **Google Drive API**, and **Google Picker API**.
+2. In **Google Auth Platform**, configure Moments Timeline branding and audience.
+   For Testing, add feranmidyro@gmail.com and kieragreen50@gmail.com as test users.
+   Add identity scopes (openid, email/profile) and
+   `https://www.googleapis.com/auth/drive.file` to Data Access. Do not grant all-Drive
+   or all-document scopes. Supabase sign-in requests identity only; Docs consent
+   separately requests openid/email/drive.file.
+3. Create a **Web application** OAuth client. Authorized JavaScript origin:
+   `https://moments-timeline-rho.vercel.app`. Add BOTH exact redirect URIs:
 
-`https://moments-timeline-rho.vercel.app/api/word/callback`
+   - `https://rnilakqmyanujehtqbuk.supabase.co/auth/v1/callback`
+   - `https://moments-timeline-rho.vercel.app/api/docs/callback`
 
-Add **Microsoft Graph → Delegated permissions → Files.ReadWrite**.
-The OAuth request also asks for `openid` and `offline_access` so authorized,
-queued changes can be synced after the browser closes. Do not grant application
-permissions or tenant-wide `Files.ReadWrite.All` as a workaround.
-Create a client secret; record its expiration and plan its rotation.
-Place these values in `.credentials/microsoft.json`:
+4. Create a Picker API key restricted to **Google Picker API**, with HTTP referrers
+   limited to the production origin and `https://moments-timeline-rho.vercel.app/*`.
+   Record the **numeric project number**, not the project ID.
+5. Save credentials in ignored `.credentials/google.json`, file mode 600, directory
+   mode 700. Never put secrets in chat, Git, or browser environment variables:
 
-```json
-{"tenantId":"tenant UUID","clientId":"application UUID","clientSecret":"secret VALUE"}
-```
+   ```json
+   {"clientId":"WEB-CLIENT-ID.apps.googleusercontent.com","clientSecret":"SECRET-VALUE","projectNumber":"NUMERIC-PROJECT-NUMBER","pickerApiKey":"RESTRICTED-PICKER-KEY"}
+   ```
 
-These placeholders are a schema, not usable credentials. Deployment requires
-`MICROSOFT_TENANT_ID`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, and an
-independent `WORD_TOKEN_ENCRYPTION_KEY` (base64 encoding of 32 random bytes).
-The server also requires `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET`; these are
-never browser configuration. Preview deployments must not receive Word secrets.
+These are placeholders. The agent can run `node scripts/configure-google.mjs` to
+configure only Supabase's Google provider and prepare protected deployment files.
+Store `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_PROJECT_NUMBER`, and
+`GOOGLE_PICKER_API_KEY` as sensitive Vercel Production variables. Docs also requires
+`DOCS_TOKEN_ENCRYPTION_KEY` (32 random bytes, base64), `SUPABASE_SERVICE_ROLE_KEY`,
+and `CRON_SECRET`. No document secrets belong in Preview or `NEXT_PUBLIC_` variables.
 
-Once configured, sign in to the production journal and click **Connect Microsoft**.
-Authorize as the document owner or an identity with edit permission on the supplied
-PHOTO EVIDENCE.docx. Authorization only reads/inspects the document; syncing remains
-disabled until acceptance checks pass on a temporary document.
+External OAuth apps left in **Testing** can issue refresh tokens that expire after
+seven days when Drive access is requested. For continuing synchronization, move
+consent to Production when permitted. Publishing/branding review requires the
+Google account owner. The per-file scope is non-sensitive. Resolve account or
+organization restrictions through the administrator; do not broaden scopes.
 
-If registration or consent is blocked, send the actual restriction to the university
-administrator. The request is: a confidential web application, the exact callback
-above, delegated Graph Files.ReadWrite and offline_access for updating the owner's
-existing photo evidence document, encrypted refresh tokens on the application server,
-and access limited in the journal to the two approved editors. University approval
-must also permit both editors' Microsoft identities to open the shared document.
-Their journal Gmail addresses alone do not prove Microsoft sharing permission.
-Do not create an anonymous sharing link.
+## Sign-in, consent and file selection
 
-## Email delivery
+Both editors use **Sign in with Google** on production. Other Google accounts have
+no journal access under the existing database and photo policies.
 
-The inspected Supabase project has no custom SMTP host and its built-in quota is
-two emails per hour. Resend is the recommended quick setup because it has an
-[official Supabase SMTP integration](https://resend.com/docs/send-with-supabase-smtp).
-It requires a sender domain you control. Verify the domain using the DNS records
-shown by Resend; arbitrary Gmail From addresses are not a verified domain.
+One approved editor clicks **Connect Google Docs** and consents as that same Google
+account, then clicks **Select shared Google Doc**. Choose the supplied existing Doc
+in Google Picker. Picker provides the per-file grant; a pasted link does not.
+The server rejects other document IDs. Refresh tokens remain encrypted on the
+server; Picker receives only a short-lived access token in browser memory.
 
-Prefer the Resend dashboard's Supabase integration to configure credentials securely.
-Alternatively, save `.credentials/smtp.json` locally with `host`, `port`, `user`,
-`password`, `senderEmail`, and `senderName`, then run `node scripts/configure-smtp.mjs`.
-The script inspects current settings, updates only SMTP fields and email rate, and
-reads back safe fields. `--inspect` performs no configuration writes.
-Existing supported SMTP credentials can be used instead of creating a new provider.
+In the Doc's **Share** dialog, set general access to **Restricted** and give both
+approved Gmail accounts **Editor** access. The worker checks sharing before each
+job. It does not create anonymous links or automatically change sharing.
+OAuth/Picker only read and inspect the real document initially; writes stay disabled.
 
-After configuration, request an ordinary sign-in email from the production form for
-each approved editor. Confirm each actual inbox receives it and each link returns
-to production and opens the shared journal. Provider acceptance, a generated admin
-magic link, and mocked browser tests do not establish inbox delivery.
+## Temporary tests and activation
 
-## Activation requirements
+After consent, run `node --experimental-transform-types scripts/docs-acceptance.ts`.
+It creates a new temporary Google Doc, verifies actual stale-revision rejection,
+additions, older dates, edits, deletion, retry idempotency and direct-edit preservation.
+It checks original sharing, exports a protected layout PDF, and verifies the original
+revision is unchanged. Test photos never enter the real document. The temporary Doc
+remains available for layout review; its private staging image is removed afterward.
 
-Before enabling writes: inspect the original document and its version history;
-use a temporary copy for addition, older-date order, edit, deletion, retry,
-Word-only edit preservation and conflicts; prove stale ETags are rejected by the
-actual drive; verify one uncropped portrait per page in Word Online and desktop Word;
-and check both editors' access. If conditional PUT is not enforced, implement and
-verify a conditional upload-session commit before activation. Never fall back to
-unconditional replacement. Keep the original untouched during disruptive tests.
+Inspect `.credentials/docs-acceptance/layout-review.pdf` for one uncropped photo
+per page, date above and caption below. Verify both actual Google logins. Only after
+these checks may the operator mark the corresponding report fields as passed and
+run `node scripts/activate-docs.mjs`. Re-inspect the original if its revision changes.
+Observe a genuine production journal entry updating the supplied Doc before claiming
+live syncing complete; a no-op against an empty journal is insufficient.
+
+The live browser regression refuses disposable fixtures while Docs syncing is enabled.
+Never bypass that guard against the real document.
+
+## References
+
+- [Supabase Google setup](https://supabase.com/docs/guides/auth/social-login/auth-google)
+- [Google per-file permission](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)
+- [Revision-checked Docs updates](https://developers.google.com/workspace/docs/api/reference/rest/v1/documents/batchUpdate)
+- [Google token expiration](https://developers.google.com/identity/protocols/oauth2)

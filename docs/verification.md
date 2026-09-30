@@ -87,3 +87,42 @@ See service-setup.md for the concrete access steps and activation gates.
   sessions received accurate authorization-required status without token fields.
 - Read back SMTP after deployment: custom SMTP remains absent, production redirect
   remains correct. No real email delivery claim is made.
+
+## Google Docs replacement (2026-09-30)
+
+- Inspected clean repository and Vercel READY state at commit 294612c before editing.
+- Inspected Supabase Auth: Google provider disabled; no client ID/secret configured.
+  Supabase Site URL remains the stable production origin. Google Cloud CLI/account
+  credentials are unavailable. The supplied Google Doc returned HTTP 401 read-only.
+- Replaced the Microsoft runtime/routes/interface with Google Docs OAuth, per-file
+  Picker selection, named-range merges, revision-conditioned atomic batches, durable
+  queues, encryption, conflict resolution and cautious crash recovery.
+- Added Supabase Google sign-in handoff requesting identity only, with accurate
+  provider setup state. Kept existing membership/storage restrictions unchanged.
+- 25 behavior tests pass, including 15 Docs tests covering untouched original material,
+  sorted insertion, equal-date ordering, duplicate prevention, proportional layout,
+  edits/deletion, direct edits, conflicts, missing ranges, unsupported markup,
+  conditional writes, recovery, encryption and private document sharing. These use
+  constructed API documents and simulated responses; they do not prove rendering.
+- 14 distinct Chrome regression checks pass against simulated services (the original
+  12-test suite and a focused 7-test final Google run including two new error checks),
+  including journal
+  workflows, Docs conflict/pending/failure states and Google OAuth handoff/config state, consent failure and provider outage.
+- TypeScript and production build pass.
+- Live preflight: zero current journal entries, exact two approved memberships,
+  private photo bucket, zero enabled Word connections, no pre-existing Docs tables.
+- Rehearsed migration 004 and rolled-back SQL checks, then applied it once. Repeated
+  actual SQL assertions successfully: outbox snapshots, private token tables, lease
+  fencing and idempotent commits; an unapproved JWT with Google provider metadata
+  cannot read the journal or private photos. Fixtures rolled back.
+- Sensitive Docs encryption configuration stored for Vercel Production and worker
+  credential stored in Supabase Vault. Google client/Picker values are not provided.
+  No Google provider was enabled with fabricated credentials.
+- Prepared a real temporary-Doc acceptance script and activation gate. Neither was
+  run: Google account configuration and consent are missing. No real or temporary
+  Google document was written; the prior Microsoft document remains untouched.
+
+Google sign-in remains unconfigured. Docs syncing remains disabled. Real Google
+logins for both accounts, Picker authorization, live temporary-document updates,
+Google-rendered portrait pagination, and a genuine production update to the supplied
+Doc are still required. Follow docs/service-setup.md; no live integration is claimed.

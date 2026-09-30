@@ -27,11 +27,11 @@ test("production sign-in form uses the correct redirect and reports email servic
 });
 
 test("real browser workflow shared by both approved editors", async ({ browser }) => {
-  // Disposable fixtures must never be forwarded to PHOTO EVIDENCE.docx.
+  // Disposable fixtures must never be forwarded to the real Google Doc.
   const protectedKeys = JSON.parse(readFileSync(".credentials/supabase-keys.json", "utf8"));
   const server = createClient("https://rnilakqmyanujehtqbuk.supabase.co", protectedKeys.find((item: { name: string }) => item.name === "service_role").api_key, { auth: { persistSession: false, autoRefreshToken: false } });
-  const connection = await server.from("word_connections").select("enabled").maybeSingle();
-  if (connection.error || connection.data?.enabled) throw Error("Disruptive journal test blocked: confirm Word syncing is disabled or use an isolated test database.");
+  const connection = await server.from("docs_connections").select("enabled").maybeSingle();
+  if (connection.error || connection.data?.enabled) throw Error("Disruptive journal test blocked: confirm Google Docs syncing is disabled or use an isolated test database.");
   // Signing out revokes the prior fixture session; every run needs a fresh one.
   execFileSync(process.execPath, ["scripts/create-test-sessions.mjs"], { stdio: "inherit" });
   const first = JSON.parse(readFileSync(".credentials/sessions/feranmidyro@gmail.com.json", "utf8"));
@@ -52,7 +52,7 @@ test("real browser workflow shared by both approved editors", async ({ browser }
   try {
     await feran.goto("/");
     await expect(feran.getByRole("heading", { name: "Add a memory" })).toBeVisible();
-    await expect(feran.getByRole("region", { name: "Shared Word document" }).getByText("Microsoft authorization needed")).toBeVisible();
+    await expect(feran.getByRole("region", { name: "Shared Google Docs document" }).getByText("Google Docs authorization needed")).toBeVisible();
     for (const [date, caption] of [["2026-09-01", marker + " recent"], ["2010-05-12", marker + " older"]]) {
       await feran.locator('input[type="file"]').setInputFiles("tests/fixtures/portrait.png");
       await feran.getByLabel("Date of photo").fill(date);

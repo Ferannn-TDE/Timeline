@@ -1,104 +1,72 @@
 # Moments Timeline
 
-A private two-person photo journal built with Next.js, Supabase, and Vercel.
-The approved editors are **feranmidyro@gmail.com** and **kieragreen50@gmail.com**.
-Entries appear newest first, refresh every 30 seconds, and show uncropped portraits.
-Both editors can add, edit, and remove shared entries. Conflicting edits are rejected.
+A private two-person Next.js photo journal on Vercel with Supabase Auth, database
+and private storage. Approved editors: feranmidyro@gmail.com and kieragreen50@gmail.com.
+Entries sort newest first and display uncropped portraits. Both editors can upload,
+edit and remove shared memories; stale updates are rejected.
 
-## Existing services
-
-- GitHub: https://github.com/Ferannn-TDE/Timeline
-- Supabase: `Timeline` (`rnilakqmyanujehtqbuk`)
 - Production: https://moments-timeline-rho.vercel.app
-- Vercel: `moments-timeline` in `ferannn-tdes-projects`, connected to this repository
-- Word: sync code is implemented but **not activated**; Microsoft registration/consent and real-document acceptance checks remain required.
+- GitHub: https://github.com/Ferannn-TDE/Timeline
+- Supabase: Timeline (`rnilakqmyanujehtqbuk`)
+- Google Doc: https://docs.google.com/document/d/1gGFlT4q6OKSKakkEt25Wl5Yk78-VJCpIuUGuQ8qO8ws/edit
 
-See [verification notes](docs/verification.md) for actual test results and outstanding work.
+Google sign-in and Docs code are implemented. Live configuration, consent,
+temporary-document acceptance and a real production update must pass before
+claiming the integrations complete. The interface shows pending setup accurately.
+The Microsoft integration is removed; its document and historical database state
+are preserved and not contacted.
 
-## Database setup and audit
+## Service setup
 
-**Do not rerun setup on an existing project.** Run the read-only `supabase/audit.sql`
-first. The current project already had the tables, memberships, and original policies.
-The targeted migration `supabase/migrations/001_restrict_approved_editors.sql` was
-applied after that audit: it makes the photo bucket private, restricts uploads to
-JPEG/PNG/WebP up to 10 MB, and adds restrictive policies for exactly the two editors.
-It preserves existing entries, memberships, and photos. Restrictive guards also
-constrain other permissive policies. Elevated database/admin credentials still bypass
-RLS and must never be put in browser environments.
+[Google setup](docs/service-setup.md) gives exact redirects, API/Picker configuration,
+secure credentials and activation steps. Supabase Google sign-in requests identity
+only; document consent separately requests per-file drive.file access. A Google
+login cannot bypass the two-email database/storage restriction.
 
-For a genuinely empty new project only: create a private `photo-journal` bucket,
-run `supabase/setup.sql` once, then apply the targeted migration for bucket limits.
-The two approved emails are already included. Do not add placeholder memberships.
+For local development copy `.env.example` to `.env.local`, set the browser-safe URL
+and publishable key, run `npm ci` and `npm run dev`. Sensitive server variables belong
+only in protected `.credentials` or Vercel Production. Never put them in NEXT_PUBLIC_
+variables, chat or Git. Credentials, environment files, artifacts, Vercel metadata
+and Supabase temporary files are ignored and excluded from deployment uploads.
 
-## Local development
+## Database
 
-1. Copy `.env.example` to `.env.local` and set the project URL and publishable key.
-2. Run `npm ci` and `npm run dev`.
-3. Open http://localhost:3000 and request an email sign-in link.
+Do not rerun setup.sql. Audit the live project using supabase/audit.sql and
+supabase/docs-audit.sql first. Migration 001 already enforces the two memberships,
+private photos and file limits. Migrations 002/003 retain historical Word state.
+Migration 004 switches the outbox to Google Docs, creates private server tables and
+buckets, and disables Word jobs. Journal entries/photos and external documents are
+not deleted. Check verification notes before applying any migration again.
 
-`.env.local`, `.credentials`, `.vercel`, and test artifacts are ignored by Git and
-excluded from Vercel uploads. Never commit tokens, service-role keys, or passwords.
+## Google Docs updates
+
+[The sync design](docs/google-docs-sync-design.md) describes manual-edit preservation,
+conflicts, chronological placement, named ranges, conditional writes and recovery.
+Private image insertion uses ten-minute signed URLs. Unsupported layout/comments,
+conflicting edits and uncertain recovery pause updates. Saving a journal entry is
+separate from syncing it to Docs.
 
 ## Verification
 
 ```bash
-npm run typecheck
 npm test
+npm run typecheck
 npm run build
 npm run test:e2e
 ```
 
-Browser tests use a simulated Supabase backend and never prove live integration.
-Install Playwright Chromium (`npx playwright install chromium`) or set
-`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an installed Chrome executable.
-`tests/rls.sql` verifies live database policies with a transaction that rolls back.
+Set PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH to installed Chrome, or install Playwright
+Chromium. Unit Docs fixtures and simulated UI responses do not prove live Google
+login or rendering. tests/rls.sql and tests/docs-rls.sql verify live database access
+and outbox behavior in rolled-back transactions. Admin-issued sessions used by
+local verification scripts are not proof of Google sign-in. Disruptive live journal
+fixtures are refused while Docs syncing is enabled.
 
-The local-only service verification utilities in `scripts/` read protected account
-sessions and project keys from `.credentials`. `create-test-sessions.mjs` generates
-admin-issued magic links and verifies the actual Supabase sign-in exchange. It does
-not prove email delivery. `live-check.ts` exercises real private storage and shared
-entries and cleans only its own temporary test data. The browser uses only the publishable key. Word API routes use a server-only service-role key to access the private outbox and encrypted tokens.
+scripts/docs-acceptance.ts runs real API checks on a new temporary Doc after consent.
+scripts/activate-docs.mjs refuses activation until login, layout, sharing and API
+acceptance checks pass. See [actual verification results](docs/verification.md).
 
-## Vercel and authentication
+## Earlier site
 
-Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-for Production and Preview **before** building. Next.js embeds these at build time;
-changing them requires a fresh deployment. Never expose a service-role or secret key in a browser variable.
-Word server secrets are Production-only; see [service setup](docs/service-setup.md).
-
-Set Supabase Auth Site URL to the actual stable production URL. Allow that exact
-origin plus http://localhost:3000 and http://127.0.0.1:3000 for development.
-Add specific preview origins if email login on previews is needed. Avoid wildcard
-redirects for arbitrary deployments. Production checks hit Supabase’s sign-in email quota after two earlier accepted
-requests. Reliable email delivery still requires sender/provider access and an
-inbox check; see https://supabase.com/docs/guides/auth/auth-smtp.
-
-Keep email confirmation enabled. The UI limits
-sign-in requests to the approved emails; SQL policies enforce all data access.
-
-## Shared Word document
-
-The server implements delegated Microsoft OAuth, encrypted tokens, durable change
-events, tagged-page merging, conditional writes, recovery intents and private backups.
-The UI distinguishes connection, verification, queue, success, failure and conflicts.
-[The conflict-handling design](docs/word-sync-design.md) governs preservation of direct
-Word edits. [Service setup](docs/service-setup.md) records the required access and
-acceptance gates. No Microsoft consent has been obtained and no original Word file
-has been read or written. Sync stays disabled until real temporary-document checks
-and rendering/access review pass. `scripts/word-acceptance.ts` contains the temporary
-document checks; it requires protected Microsoft credentials and an OAuth connection.
-Never run disruptive journal tests while syncing to the original document is enabled.
-
-Migrations 002 and 003 were applied after an existence audit and rolled-back rehearsal.
-Do not rerun them. They add server-only Word tables, an atomic outbox trigger,
-exclusive leases, and Vault-backed asynchronous worker notifications. Client polling
-and daily Vercel cron provide retry paths; after three failures, explicit retry is
-required. The safe document limit is 25 MB; recovery backups and replaced image
-assets are retained and require storage monitoring.
-
-## Earlier private site
-
-The earlier site at https://moments-timeline-journal.odedairoferan.chatgpt.site
-was inspected read-only. Its live D1 `DB.entries` table was empty at the migration
-check; it was not deleted or modified. This does not enumerate orphaned storage
-objects. Recheck before migrating if the earlier site receives new entries.
+The earlier private site and its data remain untouched. Its entries table was empty
+at the previous read-only migration check. No deletion or migration is needed.

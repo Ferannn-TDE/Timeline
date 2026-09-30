@@ -12,7 +12,8 @@ async function backend(page: Page, email: string | null = "feranmidyro@gmail.com
     const token = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url") + "." + Buffer.from(JSON.stringify({ sub: user.id, email, exp: expires, role: "authenticated" })).toString("base64url") + ".test";
     await page.addInitScript(({ user, token, expires }) => localStorage.setItem("sb-fake-project-auth-token", JSON.stringify({ access_token: token, refresh_token: "test-refresh", expires_at: expires, expires_in: 3600, token_type: "bearer", user })), { user, token, expires });
   }
-  await page.route("**/api/word/status", route => route.fulfill({contentType:"application/json",body:JSON.stringify({state:"authorization_required",pending:0,connection:null,conflicts:[],entries:[]})}));
+  await page.route("**/api/auth/providers", route => route.fulfill({json:{google:true,available:true}}));
+  await page.route("**/api/docs/status", route => route.fulfill({contentType:"application/json",body:JSON.stringify({state:"authorization_required",pending:0,connection:null,conflicts:[],entries:[]})}));
   const state = { rows, uploads: 0, deletes: 0, otps: 0, delayReads: false, cleanupError: false };
   await page.route("https://fake-project.supabase.co/**", async route => {
     const request = route.request();
@@ -139,43 +140,83 @@ test("mobile portrait photo is visible without cropping", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
-test("Word conflicts show reviewed versions and bind the editor's resolution", async ({ page }) => {
+test("Google Docs conflicts show reviewed versions and bind the editor's resolution", async ({ page }) => {
   await backend(page);
-  const conflict = { entry_id: "22222222-2222-4222-8222-222222222222", reason: "This entry changed in both places.", website: { ...initial, caption: "Website caption" }, word_text: "Manual Word caption", word_hash: "reviewed-word", desired_hash: "reviewed-website" };
-  await page.route("**/api/word/status", route => route.fulfill({ json: { state: "conflict", pending: 1, connection: { enabled: true, document_name: "PHOTO EVIDENCE.docx", document_url: "https://example.com/shared.docx" }, conflicts: [conflict], entries: [{ entry_id: conflict.entry_id, status: "conflict" }] } }));
+  const conflict = { entry_id: "22222222-2222-4222-8222-222222222222", reason: "This entry changed in both places.", website: { ...initial, caption: "Website caption" }, document_text: "Manual Google Docs caption", document_hash: "reviewed-document", desired_hash: "reviewed-website" };
+  await page.route("**/api/docs/status", route => route.fulfill({ json: { state: "conflict", pending: 1, connection: { enabled: true, document_name: "Moments Google Doc", document_url: "https://docs.google.com/document/d/test/edit" }, conflicts: [conflict], entries: [{ entry_id: conflict.entry_id, status: "conflict" }] } }));
   let resolution: unknown;
-  await page.route("**/api/word/conflicts", route => { resolution = route.request().postDataJSON(); return route.fulfill({ json: { state: "pending" } }); });
-  await page.route("**/api/word/sync", route => route.fulfill({ json: { state: "synced" } }));
+  await page.route("**/api/docs/conflicts", route => { resolution = route.request().postDataJSON(); return route.fulfill({ json: { state: "pending" } }); });
+  await page.route("**/api/docs/sync", route => route.fulfill({ json: { state: "synced" } }));
   await page.goto("/");
-  const panel = page.getByRole("region", { name: "Shared Word document" });
-  await expect(panel.getByText("Word changes need review")).toBeVisible();
-  await expect(panel.getByText("Manual Word caption")).toBeVisible();
+  const panel = page.getByRole("region", { name: "Shared Google Docs document" });
+  await expect(panel.getByText("Google Docs changes need review")).toBeVisible();
+  await expect(panel.getByText("Manual Google Docs caption")).toBeVisible();
   await expect(panel.getByText(/Website caption/)).toBeVisible();
   page.once("dialog", dialog => dialog.accept());
-  await panel.getByRole("button", { name: "Keep Word page" }).click();
-  await expect.poll(() => resolution).toEqual({ entry_id: conflict.entry_id, choice: "word", word_hash: "reviewed-word", desired_hash: "reviewed-website" });
+  await panel.getByRole("button", { name: "Keep Google Docs page" }).click();
+  await expect.poll(() => resolution).toEqual({ entry_id: conflict.entry_id, choice: "document", document_hash: "reviewed-document", desired_hash: "reviewed-website" });
   await expect(page.locator(".entrycaption")).toHaveText(["Our recent memory"]);
 });
 
-test("a connected but unverified Word document cannot start syncing", async ({ page }) => {
+test("a connected but unverified Google Docs document cannot start syncing", async ({ page }) => {
   await backend(page);
   let syncCalls = 0;
-  await page.route("**/api/word/status", route => route.fulfill({ json: { state: "awaiting_test", pending: 3, connection: { enabled: false, document_name: "PHOTO EVIDENCE.docx", document_url: "https://example.com/shared.docx" }, conflicts: [], entries: [{ entry_id: initial.id, status: "pending" }] } }));
-  await page.route("**/api/word/sync", route => { syncCalls++; return route.fulfill({ json: {} }); });
+  await page.route("**/api/docs/status", route => route.fulfill({ json: { state: "awaiting_test", pending: 3, connection: { enabled: false, document_name: "Moments Google Doc", document_url: "https://docs.google.com/document/d/test/edit" }, conflicts: [], entries: [{ entry_id: initial.id, status: "pending" }] } }));
+  await page.route("**/api/docs/sync", route => { syncCalls++; return route.fulfill({ json: {} }); });
   await page.goto("/");
-  const panel = page.getByRole("region", { name: "Shared Word document" });
+  const panel = page.getByRole("region", { name: "Shared Google Docs document" });
   await expect(panel.getByText("Connected; document verification pending")).toBeVisible();
-  await expect(panel.getByText("3 changes are waiting for Word.")).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Sync / retry Word" })).toHaveCount(0);
+  await expect(panel.getByText("3 changes are waiting for Google Docs.")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Sync / retry Google Docs" })).toHaveCount(0);
   expect(syncCalls).toBe(0);
 });
 
-test("Word failure remains separate from successfully saved journal entries", async ({ page }) => {
+test("Google Docs failure remains separate from successfully saved journal entries", async ({ page }) => {
   await backend(page);
-  await page.route("**/api/word/status", route => route.fulfill({ json: { state: "failed", pending: 1, connection: { enabled: true, document_name: "PHOTO EVIDENCE.docx", document_url: "https://example.com/shared.docx", last_error: "Microsoft is temporarily unavailable." }, conflicts: [], entries: [{ entry_id: initial.id, status: "failed" }] } }));
+  await page.route("**/api/docs/status", route => route.fulfill({ json: { state: "failed", pending: 1, connection: { enabled: true, document_name: "Moments Google Doc", document_url: "https://docs.google.com/document/d/test/edit", last_error: "Google is temporarily unavailable." }, conflicts: [], entries: [{ entry_id: initial.id, status: "failed" }] } }));
   await page.goto("/");
-  const panel = page.getByRole("region", { name: "Shared Word document" });
-  await expect(panel.getByText("Word sync failed", { exact: true })).toBeVisible();
-  await expect(panel.getByRole("alert")).toHaveText("Microsoft is temporarily unavailable.");
+  const panel = page.getByRole("region", { name: "Shared Google Docs document" });
+  await expect(panel.getByText("Google Docs sync failed", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("alert")).toHaveText("Google is temporarily unavailable.");
   await expect(page.locator(".entrycaption")).toHaveText(["Our recent memory"]);
+});
+
+test("Google sign-in starts Supabase OAuth with the production return origin and no document scopes", async ({ page }) => {
+  await backend(page, null);
+  let requested = "";
+  await page.route("https://fake-project.supabase.co/auth/v1/authorize**", route => { requested = route.request().url(); return route.fulfill({contentType:"text/html",body:"<h1>Google authentication handoff</h1>"}); });
+  await page.goto("/");
+  await expect(page.getByRole("button", {name:"Sign in with Google"})).toBeEnabled();
+  await page.getByRole("button", {name:"Sign in with Google"}).click();
+  await expect.poll(() => requested).not.toBe("");
+  const url = new URL(requested);
+  expect(url.searchParams.get("provider")).toBe("google");
+  expect(url.searchParams.get("redirect_to")).toBe("http://127.0.0.1:3000");
+  expect(url.searchParams.get("prompt")).toBe("select_account");
+  expect(url.searchParams.get("scopes")).toBeNull();
+});
+
+test("Google sign-in accurately shows missing provider configuration", async ({ page }) => {
+  await backend(page, null);
+  await page.route("**/api/auth/providers", route => route.fulfill({json:{google:false,available:true}}));
+  await page.goto("/");
+  await expect(page.getByRole("button", {name:"Sign in with Google"})).toBeDisabled();
+  await expect(page.getByText("Google sign-in setup is pending.")).toBeVisible();
+});
+
+test("Google Docs consent failure is shown without exposing provider details", async ({ page }) => {
+  await backend(page);
+  await page.goto("/?docs=authorization_failed");
+  const panel = page.getByRole("region", {name:"Shared Google Docs document"});
+  await expect(panel.getByRole("status")).toContainText("authorization was not completed");
+  await expect(panel.getByRole("button", {name:"Connect Google Docs"})).toBeVisible();
+  await expect(page).toHaveURL("http://127.0.0.1:3000/");
+});
+
+test("Google sign-in distinguishes provider outage from missing configuration", async ({ page }) => {
+  await backend(page, null);
+  await page.route("**/api/auth/providers", route => route.fulfill({json:{google:false,available:false}}));
+  await page.goto("/");
+  await expect(page.getByText("Google sign-in is temporarily unavailable.")).toBeVisible();
+  await expect(page.getByRole("button", {name:"Sign in with Google"})).toBeDisabled();
 });
