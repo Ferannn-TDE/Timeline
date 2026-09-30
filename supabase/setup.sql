@@ -1,7 +1,7 @@
 -- Run this once in the Supabase SQL Editor.
 -- Create a PRIVATE Storage bucket named photo-journal in the Dashboard first.
 create table if not exists public.journal_members (
-  email text primary key check (email = lower(email))
+  email text primary key check (email = lower(email) and email in ('feranmidyro@gmail.com', 'kieragreen50@gmail.com'))
 );
 
 create table if not exists public.entries (
@@ -32,7 +32,7 @@ returns boolean
 language sql stable security definer
 set search_path = ''
 as $$
-  select exists (
+  select lower((select auth.jwt()->>'email')) in ('feranmidyro@gmail.com', 'kieragreen50@gmail.com') and exists (
     select 1 from public.journal_members
     where lower(email)=lower((select auth.jwt()->>'email'))
   );
@@ -62,6 +62,28 @@ create policy "Members upload photos" on storage.objects
 create policy "Members remove photos" on storage.objects
   for delete to authenticated
   using (bucket_id='photo-journal' and (select public.is_journal_member()));
+
+-- Restrictive guards also constrain any older permissive policies.
+drop policy if exists "Approved editors guard" on public.entries;
+create policy "Approved editors guard" on public.entries as restrictive for all to public
+using (case when (select auth.role()) = 'authenticated' then (select public.is_journal_member()) else false end)
+with check (case when (select auth.role()) = 'authenticated' then (select public.is_journal_member()) else false end);
+
+drop policy if exists "Own approved membership guard" on public.journal_members;
+create policy "Own approved membership guard" on public.journal_members as restrictive for all to public
+using ((select auth.role()) = 'authenticated'
+  and email = lower((select auth.jwt()->>'email'))
+  and email in ('feranmidyro@gmail.com', 'kieragreen50@gmail.com'));
+
+drop policy if exists "Approved photo editors guard" on storage.objects;
+create policy "Approved photo editors guard" on storage.objects as restrictive for all to public
+using (bucket_id <> 'photo-journal' or case when (select auth.role()) = 'authenticated' then (select public.is_journal_member()) else false end)
+with check (bucket_id <> 'photo-journal' or case when (select auth.role()) = 'authenticated' then (select public.is_journal_member()) else false end);
+
+-- Enforce upload ownership even if another insert policy was added earlier.
+drop policy if exists "Photo entry author guard" on public.entries;
+create policy "Photo entry author guard" on public.entries as restrictive for insert to authenticated
+with check (lower(author_email) = lower((select auth.jwt()->>'email')));
 
 insert into public.journal_members(email)
 values ('feranmidyro@gmail.com'), ('kieragreen50@gmail.com')

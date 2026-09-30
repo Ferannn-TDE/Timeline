@@ -1,0 +1,5 @@
+.env*
+.credentials
+artifacts
+supabase/.temp
+.git
