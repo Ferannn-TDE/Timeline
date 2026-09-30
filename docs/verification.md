@@ -74,3 +74,16 @@ Work performed on 2026-09-30.
 The Word integration is not activated. Reliable email delivery is not configured or
 verified. Admin-issued sessions used for journal regression do not prove inbox delivery.
 See service-setup.md for the concrete access steps and activation gates.
+
+- Pushed implementation commit 384fd07 to GitHub and deployed directly through
+  the authenticated Vercel CLI because the push did not trigger a new build.
+  Deployment dpl_EqGMvgHhU1Eu6sCN5z4em9E9m6wo reached READY and was aliased to production.
+- Repeated the actual production Chrome workflow after that deployment: both
+  accounts, upload, older-date ordering, caption/date edits, cross-editor visibility,
+  deletion, uncropped portraits and sign-out passed; only test fixtures were removed.
+  The regression script now refuses fixtures if Word syncing is enabled.
+- Read-only production Word route checks passed: anonymous status/connect/sync/
+  conflict requests and unauthenticated cron were denied; both approved editor
+  sessions received accurate authorization-required status without token fields.
+- Read back SMTP after deployment: custom SMTP remains absent, production redirect
+  remains correct. No real email delivery claim is made.
