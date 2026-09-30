@@ -1,8 +1,9 @@
-# Shared Word connection — design, not an active integration
+# Shared Word connection — implemented design, activation pending
 
-The document link and delegated Microsoft authorization are still required.
-No shared document has been read or written. This design is recorded for discussion
-before any write to the existing file. Never upload a newly generated journal over it.
+The PHOTO EVIDENCE.docx sharing link is known; delegated Microsoft authorization
+is still required. No shared document has been read or written. The implementation
+follows this design and remains disabled pending real-document inspection and
+temporary-document acceptance tests. Never upload a newly generated journal over it.
 
 ## Updating the existing document
 

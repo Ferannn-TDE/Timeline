@@ -44,8 +44,33 @@ Work performed on 2026-09-30.
 - The final live Chrome run passed the two-account date/caption/upload/delete
   workflow and the email-limit handling check. These are separate outcomes.
 
-The Word link, Microsoft consent, document editing, conflict resolution, and
-two-editor Word access are still outstanding. No Word connection is claimed as
-implemented or tested. Email requests were accepted, but inbox receipt has not
-been checked. Sessions used for live checks were admin-issued; no editor passwords
-were requested or changed.
+## Remaining-work implementation (2026-09-30)
+
+- Inspected deployed base commit af159ca and current repository before editing.
+- Inspected Supabase Auth: no custom SMTP host/sender; built-in rate is two per hour;
+  production Site URL remains correct. No SMTP configuration changed without provider credentials.
+- Added Microsoft OAuth, encrypted server tokens, tagged DOCX merging, conflict UI,
+  durable outbox, version-conditioned writes, fenced workers and crash recovery.
+  Microsoft credentials/consent are unavailable; no original Word content has been read or written.
+- All 23 unit/behavior checks passed, including 13 Word preservation, conflict,
+  idempotency, proportional-image, conditional-write, recovery and encryption checks.
+  These use constructed DOCX packages and simulated Graph responses, not actual Word rendering.
+- All 10 Chrome tests passed against the simulated backend, including the existing
+  journal workflows and new Word conflict, verification-pending and failure UI states.
+- Production build and TypeScript checks passed.
+- Read-only schema preflight found no Word tables, zero current journal entries,
+  the exact two memberships, and a private photo bucket.
+- Rehearsed migration 002 plus security/outbox assertions in a rolled-back transaction.
+  Applied migrations 002/003 once, then repeated the transactional assertions successfully.
+  Verified insert/edit/delete snapshots, browser denial of tokens/outbox/lease RPCs,
+  concurrent lease exclusion, owner fencing, and atomic/idempotent intent commit.
+- Stored Word encryption, service-role and worker credentials as sensitive Vercel
+  Production-only values, and the worker credential in Supabase Vault. No Microsoft
+  or SMTP secret is present; Word writes remain disabled.
+- Prepared a live temporary-document acceptance script; it has NOT been run because
+  Microsoft authorization is missing. Online/desktop pagination, live stale-ETag
+  enforcement, two-editor Word access and original-document inspection remain unverified.
+
+The Word integration is not activated. Reliable email delivery is not configured or
+verified. Admin-issued sessions used for journal regression do not prove inbox delivery.
+See service-setup.md for the concrete access steps and activation gates.

@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type SupabaseClient, type User } from "@supabase/supabase-js";
+import WordSync from "./word-sync";
 import { getJournalClient } from "@/lib/client";
 
 import { APPROVED_EMAILS, addEntry, editEntry, deleteEntry, loadEntries, errorMessage, type Entry } from "@/lib/journal";
 
 export default function Home(){
   const db = getJournalClient();
+  const [wordState,setWordState]=useState("Word not connected");
   const [user,setUser]=useState<User|null>(null),[checking,setChecking]=useState(true),[member,setMember]=useState(false);
   const [entries,setEntries]=useState<Entry[]>([]),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
   const [error,setError]=useState(""),[message,setMessage]=useState(""),[email,setEmail]=useState("");
@@ -43,7 +45,7 @@ export default function Home(){
       if(!active)return;
       ++authVersion;
       if(activeAccount.current!== (session?.user.id || null)){
-        ++refreshVersion.current;setEntries([]);setMember(false);setEditing(null);setPhoto(null);setDate("");setCaption("");setMessage("");setLoading(false);
+        ++refreshVersion.current;setEntries([]);setMember(false);setEditing(null);setPhoto(null);setDate("");setCaption("");setMessage("");setLoading(false);setWordState("Word not connected");
       }
       activeAccount.current=session?.user.id || null;
       setUser(session?.user || null);
@@ -95,7 +97,7 @@ export default function Home(){
   return <div className="shell">
     <header className="bar"><span className="mark">M</span><strong>Moments <small>shared timeline</small></strong>
       {user&&<button className="signout" disabled={busy} onClick={signOut}>Sign out</button>}
-      <span className="pending">Word connection pending</span>
+      <span className="pending">{wordState}</span>
     </header>
     {!db?<main className="auth"><h1>Set up the journal</h1><p>Add your Supabase URL and publishable key to the environment before using this site.</p></main>:
     checking?<main className="auth">Opening your journal…</main>:
@@ -111,7 +113,7 @@ export default function Home(){
         <label className="fieldlabel" htmlFor="date">Date of photo</label><input className="field" id="date" type="date" value={date} onChange={e=>setDate(e.target.value)} required/>
         <label className="fieldlabel" htmlFor="caption">Caption</label><textarea className="field caption" id="caption" placeholder="What happened in this moment?" maxLength={2000} value={caption} onChange={e=>setCaption(e.target.value)} required/>
         <button className="primary" disabled={busy||!photo}>{busy?"Adding…":"Add to timeline"}</button></form>
-        <p className="footnote">Entries save here for both editors. Word syncing will be connected after you choose the shared document.</p>
+        <WordSync key={user.id} db={db} revision={entries.map(entry=>entry.id+entry.photo_date+entry.caption).join("|")} onState={setWordState}/>
       </aside>
       <section className="feed" aria-label="Photo timeline"><div className="feedhead"><div><div className="eyebrow">PHOTO JOURNAL</div><h2>Our story</h2></div><button className="refresh" disabled={busy||loading} onClick={()=>refresh(db,user)}>Refresh</button><span className="count">{entries.length} {entries.length===1?"memory":"memories"}</span></div>
         {error&&<div className="notice error" role="alert">{error}</div>}{message&&<div className="notice success" role="status">{message}</div>}

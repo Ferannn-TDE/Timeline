@@ -11,7 +11,7 @@ Both editors can add, edit, and remove shared entries. Conflicting edits are rej
 - Supabase: `Timeline` (`rnilakqmyanujehtqbuk`)
 - Production: https://moments-timeline-rho.vercel.app
 - Vercel: `moments-timeline` in `ferannn-tdes-projects`, connected to this repository
-- Word: **not connected**; the shared document link and Microsoft authorization are required.
+- Word: sync code is implemented but **not activated**; Microsoft registration/consent and real-document acceptance checks remain required.
 
 See [verification notes](docs/verification.md) for actual test results and outstanding work.
 
@@ -57,13 +57,14 @@ The local-only service verification utilities in `scripts/` read protected accou
 sessions and project keys from `.credentials`. `create-test-sessions.mjs` generates
 admin-issued magic links and verifies the actual Supabase sign-in exchange. It does
 not prove email delivery. `live-check.ts` exercises real private storage and shared
-entries and cleans only its own temporary test data. No admin key is used by the app.
+entries and cleans only its own temporary test data. The browser uses only the publishable key. Word API routes use a server-only service-role key to access the private outbox and encrypted tokens.
 
 ## Vercel and authentication
 
 Configure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 for Production and Preview **before** building. Next.js embeds these at build time;
-changing them requires a fresh deployment. Never use a service-role or secret key.
+changing them requires a fresh deployment. Never expose a service-role or secret key in a browser variable.
+Word server secrets are Production-only; see [service setup](docs/service-setup.md).
 
 Set Supabase Auth Site URL to the actual stable production URL. Allow that exact
 origin plus http://localhost:3000 and http://127.0.0.1:3000 for development.
@@ -77,11 +78,23 @@ sign-in requests to the approved emails; SQL policies enforce all data access.
 
 ## Shared Word document
 
-There is no active Word integration. The app explicitly labels this as pending.
-[The conflict-handling design](docs/word-sync-design.md) describes editing tagged
-pages inside the existing document, preserving Word-only edits, and pausing on
-conflicting website/Word edits. Discuss the concrete design against the actual
-shared document before any write. Do not overwrite the document with a regenerated file.
+The server implements delegated Microsoft OAuth, encrypted tokens, durable change
+events, tagged-page merging, conditional writes, recovery intents and private backups.
+The UI distinguishes connection, verification, queue, success, failure and conflicts.
+[The conflict-handling design](docs/word-sync-design.md) governs preservation of direct
+Word edits. [Service setup](docs/service-setup.md) records the required access and
+acceptance gates. No Microsoft consent has been obtained and no original Word file
+has been read or written. Sync stays disabled until real temporary-document checks
+and rendering/access review pass. `scripts/word-acceptance.ts` contains the temporary
+document checks; it requires protected Microsoft credentials and an OAuth connection.
+Never run disruptive journal tests while syncing to the original document is enabled.
+
+Migrations 002 and 003 were applied after an existence audit and rolled-back rehearsal.
+Do not rerun them. They add server-only Word tables, an atomic outbox trigger,
+exclusive leases, and Vault-backed asynchronous worker notifications. Client polling
+and daily Vercel cron provide retry paths; after three failures, explicit retry is
+required. The safe document limit is 25 MB; recovery backups and replaced image
+assets are retained and require storage monitoring.
 
 ## Earlier private site
 
