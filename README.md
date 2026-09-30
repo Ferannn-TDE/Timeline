@@ -9,6 +9,7 @@ Both editors can add, edit, and remove shared entries. Conflicting edits are rej
 
 - GitHub: https://github.com/Ferannn-TDE/Timeline
 - Supabase: `Timeline` (`rnilakqmyanujehtqbuk`)
+- Production: https://moments-timeline-rho.vercel.app
 - Vercel: `moments-timeline` in `ferannn-tdes-projects`, connected to this repository
 - Word: **not connected**; the shared document link and Microsoft authorization are required.
 
@@ -67,7 +68,11 @@ changing them requires a fresh deployment. Never use a service-role or secret ke
 Set Supabase Auth Site URL to the actual stable production URL. Allow that exact
 origin plus http://localhost:3000 and http://127.0.0.1:3000 for development.
 Add specific preview origins if email login on previews is needed. Avoid wildcard
-redirects for arbitrary deployments. Keep email confirmation enabled. The UI limits
+redirects for arbitrary deployments. Production checks hit Supabase’s sign-in email quota after two earlier accepted
+requests. Reliable email delivery still requires sender/provider access and an
+inbox check; see https://supabase.com/docs/guides/auth/auth-smtp.
+
+Keep email confirmation enabled. The UI limits
 sign-in requests to the approved emails; SQL policies enforce all data access.
 
 ## Shared Word document
