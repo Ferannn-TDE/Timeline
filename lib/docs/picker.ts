@@ -8,8 +8,12 @@ function loadPicker(): Promise<void> {
   if (loading) return loading;
   loading = new Promise<void>((resolve, reject) => {
     const script = document.createElement("script"); script.src = "https://apis.google.com/js/api.js"; script.async = true;
-    script.onerror = () => { loading = null; reject(Error("Google Picker could not load. Retry when Google is available.")); };
-    script.onload = () => window.gapi.load("picker", { callback: resolve, onerror: () => reject(Error("Google Picker failed to load.")), timeout: 10000, ontimeout: () => reject(Error("Google Picker timed out.")) });
+    const fail = (message: string) => { loading = null; script.remove(); reject(Error(message)); };
+    script.onerror = () => fail("Google Picker could not load. Retry when Google is available.");
+    script.onload = () => {
+      if (!window.gapi) { fail("Google Picker did not initialize. Retry loading it."); return; }
+      window.gapi.load("picker", { callback: resolve, onerror: () => fail("Google Picker failed to load."), timeout: 10000, ontimeout: () => fail("Google Picker timed out.") });
+    };
     document.head.appendChild(script);
   });
   return loading;

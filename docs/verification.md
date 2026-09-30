@@ -126,3 +126,19 @@ Google sign-in remains unconfigured. Docs syncing remains disabled. Real Google
 logins for both accounts, Picker authorization, live temporary-document updates,
 Google-rendered portrait pagination, and a genuine production update to the supplied
 Doc are still required. Follow docs/service-setup.md; no live integration is claimed.
+
+- Pushed Google implementation 9e81a1a to GitHub and deployed directly to Vercel;
+  dpl_AV9q4f2i8uFMKKCggPsVX1vaTjKw reached READY and production returned HTTP 200.
+- Actual production Chrome workflow passed with both approved test sessions:
+  upload, older-date placement, date/caption edit, shared visibility, deletion,
+  portrait display and sign-out. Test entries/photos were removed. These sessions
+  were admin-issued; this is not proof of Google authentication.
+- Actual production Docs route checks passed: anonymous status/connect/picker/sync/
+  conflict and cron access denied; both approved users get accurate disconnected
+  status without refresh tokens; the removed Word endpoint returns 404.
+- Actual private Docs staging-image checks passed: both browser editor accounts
+  cannot issue staging links; unsigned public access denied; service-issued signed
+  URL fetched successfully and its verified lifetime was exactly 600 seconds.
+  The temporary staging image was removed afterward. No Google document was written.
+- Production provider read-back still reports Google disabled, accurately reflected
+  in the interface. Google Cloud credential file has not been provided.
