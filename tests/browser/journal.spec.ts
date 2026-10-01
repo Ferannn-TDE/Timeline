@@ -221,7 +221,12 @@ test("blank Google Picker has independent close controls and uploader CSS cannot
       build() {
         const dialog = document.createElement("div"); dialog.className = "picker picker-dialog"; dialog.style.width = "800px";
         const frame = document.createElement("iframe"); frame.style.width = "100%"; dialog.append(frame);
-        return { dispose: () => dialog.remove(), setVisible: () => document.body.append(dialog) };
+        const outside = [...document.body.children];
+        const hidden = outside.map(element => element.getAttribute("aria-hidden"));
+        return {
+          dispose: () => { dialog.remove(); outside.forEach((element, i) => hidden[i] === null ? element.removeAttribute("aria-hidden") : element.setAttribute("aria-hidden", hidden[i]!)); },
+          setVisible: () => { outside.forEach(element => element.setAttribute("aria-hidden", "true")); document.body.append(dialog); },
+        };
       }
     }
     (window as any).google = { picker: { DocsView: View, ViewId: { DOCS: "docs" }, PickerBuilder: Builder, Action: { ERROR: "error", PICKED: "picked", CANCEL: "cancel" } } };

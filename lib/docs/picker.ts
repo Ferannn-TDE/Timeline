@@ -44,6 +44,7 @@ export async function openGooglePicker(config: PickerConfig, selected: (id: stri
     void loadPicker().then(() => {
       if (settled) return;
       const google = window.google;
+      const existingDialogs = new Set(document.querySelectorAll(".picker-dialog"));
       const view = new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes("application/vnd.google-apps.document");
       picker = new google.picker.PickerBuilder().addView(view).setAppId(config.project_number).setDeveloperKey(config.picker_key).setOAuthToken(config.access_token).setOrigin(window.location.origin).setTitle("Select the Moments Timeline shared Google Doc").setCallback((data: any) => {
       if (settled || checking) return;
@@ -62,6 +63,12 @@ export async function openGooglePicker(config: PickerConfig, selected: (id: stri
     }).build();
       notice.textContent = "Choose the shared Google Doc. If Google requests sign-in, use the same approved account.";
       picker.setVisible(true);
+      // Google's modal hides outside body children from assistive technology.
+      // Keep our independent recovery controls within this newly created dialog.
+      const dialogs = [...document.querySelectorAll(".picker-dialog")];
+      const dialog = dialogs.find(element => !existingDialogs.has(element)) ?? dialogs.find(element => element.getClientRects().length > 0);
+      if (dialog) dialog.append(controls);
+      controls.removeAttribute("aria-hidden"); controls.inert = false;
     }).catch(error => finish(error instanceof Error ? error : Error("Google Picker could not load. Retry selection.")));
   });
 }

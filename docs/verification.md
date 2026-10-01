@@ -19,6 +19,12 @@
   Added independent, always-accessible Close controls, Escape cleanup, component
   unmount cancellation, a 15-second script timeout and two-minute selection deadline.
   Errors survive background polling and permit a new selection attempt.
+- A further real-browser check found Google's modal accessibility handling hides
+  outside body controls. Recovery controls now join the visible Google dialog and
+  remove Google's hidden/inert attributes from their own element. Re-tested with
+  the actual Google library: 1019 px iframe, Close visible, actual Close click
+  successful, zero remaining Google dialogs, and the selection promise settled.
+  Added regression coverage for Google's outside-modal accessibility hiding.
 - Official Google web-Picker documentation now requires docs.google.com/* as well
   as the website in website-restricted API keys. Corrected setup guidance; actual
   Cloud key restrictions remain unverified without account-owner access. No broader
