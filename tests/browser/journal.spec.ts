@@ -181,6 +181,34 @@ test("Google Docs failure remains separate from successfully saved journal entri
   await expect(page.locator(".entrycaption")).toHaveText(["Our recent memory"]);
 });
 
+test("missing document selection explains queued uploads and Picker errors allow retry", async ({ page }) => {
+  await backend(page);
+  let syncCalls = 0;
+  await page.route("**/api/docs/status", route => route.fulfill({ json: { state: "document_selection_required", pending: 1, connection: { enabled: false, document_name: "Moments Google Doc", document_url: "https://docs.google.com/document/d/test/edit" }, conflicts: [], entries: [{ entry_id: initial.id, status: "pending" }] } }));
+  await page.route("**/api/docs/sync", route => { syncCalls++; return route.fulfill({ json: { state: "document_selection_required" } }); });
+  await page.route("**/api/docs/picker", route => route.fulfill({ json: { access_token: "temporary-test-only", picker_key: "test-only", project_number: "123", document_id: "test" } }));
+  await page.addInitScript(() => {
+    class View { setMimeTypes() { return this; } }
+    class Builder {
+      callback: (data: { action: string }) => void = () => {};
+      addView() { return this; } setAppId() { return this; } setDeveloperKey() { return this; }
+      setOAuthToken() { return this; } setOrigin() { return this; } setTitle() { return this; }
+      setCallback(callback: typeof this.callback) { this.callback = callback; return this; }
+      build() { return { dispose() {}, setVisible: () => setTimeout(() => this.callback({ action: "error" }), 0) }; }
+    }
+    (window as any).google = { picker: { DocsView: View, ViewId: { DOCS: "docs" }, PickerBuilder: Builder, Action: { ERROR: "error", PICKED: "picked", CANCEL: "cancel" } } };
+  });
+  await page.goto("/");
+  const panel = page.getByRole("region", { name: "Shared Google Docs document" });
+  await expect(panel.getByText(/this app does not yet have access to the shared document/)).toBeVisible();
+  const select = panel.getByRole("button", { name: "Select shared Google Doc" });
+  await select.click();
+  await expect(panel.getByRole("alert")).toContainText("Google Picker could not authorize file selection");
+  await expect(select).toBeEnabled();
+  await expect(panel.getByRole("button", { name: "Sync / retry Google Docs" })).toHaveCount(0);
+  expect(syncCalls).toBe(0);
+});
+
 test("Google sign-in starts Supabase OAuth with the production return origin and no document scopes", async ({ page }) => {
   await backend(page, null);
   let requested = "";

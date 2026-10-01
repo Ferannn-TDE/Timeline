@@ -75,7 +75,7 @@ export default function Home(){
     try{
       await addEntry(db,user.email || "",photo,date,caption);
       setPhoto(null);setDate("");setCaption("");if(input.current)input.current.value="";
-      setMessage("Photo added in date order.");await refresh(db,user);
+      setMessage("Photo saved to the timeline in date order. Check Google Docs sync status below.");await refresh(db,user);
     }catch(e){setError(errorMessage(e,"Could not save photo."))}
     finally{setBusy(false)}
   }
@@ -84,7 +84,7 @@ export default function Home(){
       const original=editing?.id===id ? editing : null;
       if(!original)throw Error("This entry was removed. Refresh the timeline.");
       await editEntry(db,original,editDate,editCaption);
-      setEditing(null);setMessage("Changes saved.");await refresh(db,user);
+      setEditing(null);setMessage("Changes saved to the timeline. Check Google Docs sync status below.");await refresh(db,user);
     }catch(e){setError(errorMessage(e,"Could not save changes."))}finally{setBusy(false)}
   }
   async function remove(entry:Entry){if(!db||!user||busy||!confirm("Remove this photo and caption?"))return;setBusy(true);setError("");setMessage("");

@@ -86,6 +86,8 @@ export default function DocsSync({ db, revision, onState }: { db: SupabaseClient
   return <section className="docs-panel" aria-label="Shared Google Docs document">
     <h2>Shared Google Docs journal</h2>
     <p className="docs-state">{status ? status.pending && status.state === "synced" ? "Google Docs changes queued" : labels[status.state] || "Google Docs changes queued" : "Checking Google Docs connection…"}</p>
+    {status?.state === "document_selection_required" && <p role="status">Google sign-in and consent are complete, but this app does not yet have access to the shared document. Click Select shared Google Doc and choose the Moments Timeline document. Photos and captions are saved on the website and will remain queued until document access and verification are complete.</p>}
+    {status?.state === "awaiting_test" && <p role="status">Document access is connected, but live syncing is disabled until temporary-document tests and layout review pass. Your queued photos and captions have not been sent to the shared document yet.</p>}
     {authorizationNotice && <p role="status">{authorizationNotice}</p>}
     {status?.pending ? <p>{status.pending} {status.pending === 1 ? "change is" : "changes are"} waiting for Google Docs.</p> : null}
     {status?.connection && <a href={status.connection.document_url} target="_blank" rel="noopener noreferrer">Open {status.connection.document_name}</a>}

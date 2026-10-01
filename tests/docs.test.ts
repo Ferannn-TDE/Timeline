@@ -7,6 +7,8 @@ import { HttpError, encrypt, decrypt } from "../lib/docs/server.ts";
 import { recoveryDecision } from "../lib/docs/recovery.ts";
 import { validateActivationReport, validateActivationConnection } from "../lib/docs/activation.ts";
 import { DOCUMENT_ID } from "../lib/docs/server.ts";
+import sharp from "sharp";
+import { prepareDocsImage } from "../lib/docs/image.ts";
 import { DocumentFixture } from "./docs-fixture.ts";
 import type { Row } from "../lib/journal.ts";
 import type { Baseline, Resolution } from "../lib/docs/types.ts";
@@ -14,6 +16,15 @@ import type { Baseline, Resolution } from "../lib/docs/types.ts";
 const connection = "11111111-1111-4111-8111-111111111111";
 const row = (date = "2026-01-01", caption = "Portrait memory"): Row => ({ id: randomUUID(), photo_date: date, caption, image_key: "private/photo.png", author_email: "feranmidyro@gmail.com", created_at: "2026-01-01T00:00:00Z" });
 const photo = async (entry: Row) => ({ key: entry.id + ".png", width: 300, height: 600 });
+test("48 MP phone photos honor portrait EXIF orientation and shrink without cropping", async () => {
+  const jpeg = await sharp({ create: { width: 8064, height: 6048, channels: 3, background: "#abc" } }).jpeg().withMetadata({ orientation: 6 }).toBuffer();
+  const prepared = await prepareDocsImage(jpeg);
+  assert.equal(prepared.info.width, 1500);
+  assert.equal(prepared.info.height, 2000);
+  assert.equal(prepared.info.width / prepared.info.height, 6048 / 8064);
+  assert.equal(prepared.info.format, "png");
+  await assert.rejects(prepareDocsImage(Buffer.from("unreadable photo")), /original photo and journal entry remain saved/);
+});
 test("activation requires genuine passed checks and a still-inspected unchanged document", () => {
   const report = { automated: "passed", both_editor_permissions: "passed", actual_google_signins: "passed", rendered_layout: "passed", original_id: DOCUMENT_ID, original_revision: "reviewed-revision", connection_id: connection, tested_at: "2026-09-30T12:00:00Z" };
   const selected = { id: connection, document_id: DOCUMENT_ID, enabled: false, inspected_at: report.tested_at, state: "awaiting_test" };

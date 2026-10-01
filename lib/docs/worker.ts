@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import { prepareDocsImage } from "./image.ts";
 import { randomUUID } from "node:crypto";
 import { serviceDb, encrypt, decrypt, HttpError, DOCUMENT_ID } from "./server.ts";
 import { exchangeToken, Google, ensurePrivateEditors } from "./google.ts";
@@ -112,7 +112,7 @@ export async function syncDocs() {
       photo: async row => {
         const downloaded = await db.storage.from("photo-journal").download(row.image_key);
         if (downloaded.error) throw new HttpError(422, "A journal photo is unavailable. Its entry remains saved and queued.");
-        const image = await sharp(new Uint8Array(await downloaded.data.arrayBuffer()), { limitInputPixels: 40_000_000 }).rotate().resize({ width: 1600, height: 2000, fit: "inside", withoutEnlargement: true }).png().toBuffer({ resolveWithObject: true });
+        const image = await prepareDocsImage(new Uint8Array(await downloaded.data.arrayBuffer()));
         const key = operation + "/" + row.id + ".png";
         const saved = await db.storage.from("docs-images").upload(key, image.data, { contentType: "image/png", upsert: false });
         if (saved.error) throw new HttpError(503, "The private document image could not be prepared.");

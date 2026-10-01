@@ -24,6 +24,11 @@ export async function openGooglePicker(config: PickerConfig, selected: (id: stri
     const google = window.google;
     const view = new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes("application/vnd.google-apps.document");
     const picker = new google.picker.PickerBuilder().addView(view).setAppId(config.project_number).setDeveloperKey(config.picker_key).setOAuthToken(config.access_token).setOrigin(window.location.origin).setTitle("Select the Moments Timeline shared Google Doc").setCallback((data: any) => {
+      if (data.action === google.picker.Action.ERROR) {
+        picker.dispose();
+        reject(Error("Google Picker could not authorize file selection. Retry selection; if it fails again, check that Google Picker API is enabled and its key allows this website in the same Google Cloud project. Your journal changes remain queued."));
+        return;
+      }
       if (data.action === google.picker.Action.CANCEL) { picker.dispose(); resolve(); }
       if (data.action === google.picker.Action.PICKED) {
         const id = data.docs?.[0]?.id; picker.dispose();

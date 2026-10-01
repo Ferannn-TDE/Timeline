@@ -1,5 +1,42 @@
 # Verification record
 
+## Queued genuine entry diagnosis (2026-09-30)
+
+- Traced the existing July 25, 2026 entry through its durable outbox: pending,
+  zero attempts, no prepared Google update. Connection state is
+  document_selection_required, enabled=false, inspected_at/tested_at unset.
+- Successfully refreshed the encrypted Google authorization with drive.file scope.
+  Actual read-only Docs and Drive requests for the exact target returned 404
+  (NOT_FOUND/notFound). Picker inspection has not completed; sharing cannot yet be
+  independently read. The Google API has not received an image insertion request.
+- Production logs show the notification calling /api/docs/cron with HTTP 200.
+  An authenticated worker invocation returned document_selection_required.
+  This is an explicit setup block, not a claim of a completed sync.
+- Production is configured with all four sensitive Google environment variables;
+  Supabase Google sign-in is enabled. Only the first approved editor currently has
+  an actual Google identity. Second-editor sign-in remains an activation prerequisite.
+- Found another concrete failure in the genuine source JPEG: 8064x6048 pixels
+  (48.8 MP), EXIF orientation 6, within the journal's 10 MB upload limit. The old
+  worker's 40 MP limit rejects it before preparing any Google image.
+- Fixed preparation to accept phone originals up to 80 MP, honor EXIF rotation,
+  and proportionally resize inside 1600x2000 without cropping. Preparation failures
+  now explain the image restriction and that the original and queue are preserved.
+- Prepared the genuine photo with the fixed helper as 1500x2000 PNG. A private
+  staging copy was reachable without authorization using its 600-second signed
+  URL (HTTP 200); unsigned/public access was denied. Original photo bucket remains
+  private. Removed only the temporary diagnostic staging copy.
+- Fixed unhandled Google Picker ERROR callbacks to dispose the failed dialog,
+  show actionable configuration guidance and re-enable selection for retry.
+  Setup/activation blockers now explicitly explain that website changes remain
+  queued. Upload/edit success messages refer to the timeline and separate Docs status.
+- Passed 27 unit/behavior checks, TypeScript checking, production build and four
+  targeted Chrome checks against the simulated backend, including Picker error
+  retry and absence of writes while document verification is pending.
+- Real temporary-Google-Doc acceptance and layout review remain blocked on target
+  Picker access. Activation has not been attempted and no actual shared-document
+  photo/caption update or edit propagation has been observed. No genuine journal
+  entry, original photo, Google document or historical Microsoft document changed.
+
 ## Google setup verification and activation safeguards (2026-09-30)
 
 - Inspected production READY deployment at commit b6fe1fa, the setup guide,
