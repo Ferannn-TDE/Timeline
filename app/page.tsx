@@ -117,7 +117,7 @@ export default function Home(){
     !member?<main className="auth"><h1>Access not enabled yet</h1><p>You’re signed in as {user.email}. This journal is available only to its two approved editors.</p><button className="primary" onClick={()=>refresh(db,user)}>Check access</button>{error&&<div className="notice error">{error}</div>}</main>:
     <main className="workspace">
       <aside className="composer"><div className="eyebrow">NEW ENTRY</div><h1>Add a memory</h1><p className="intro">Choose a photo, its date, and a caption. Older photos settle into the right place.</p><form onSubmit={add}>
-        <label className="picker">{preview?<img src={preview} alt="Selected photo"/>:<><span className="plus">＋</span><b>Choose a photo</b><span>JPEG, PNG or WebP · up to 10 MB</span></>}
+        <label className="photo-picker">{preview?<img src={preview} alt="Selected photo"/>:<><span className="plus">＋</span><b>Choose a photo</b><span>JPEG, PNG or WebP · up to 10 MB</span></>}
           <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setPhoto(e.target.files?.[0]||null)} required/></label>
         {photo&&<div className="selected">{photo.name}<button type="button" onClick={()=>{setPhoto(null);if(input.current)input.current.value=""}}>Remove</button></div>}
         <label className="fieldlabel" htmlFor="date">Date of photo</label><input className="field" id="date" type="date" value={date} onChange={e=>setDate(e.target.value)} required/>

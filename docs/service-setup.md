@@ -20,7 +20,10 @@ not authorize writes. The previous Microsoft document is no longer contacted.
    - `https://moments-timeline-rho.vercel.app/api/docs/callback`
 
 4. Create a Picker API key restricted to **Google Picker API**, with HTTP referrers
-   limited to the production origin and `https://moments-timeline-rho.vercel.app/*`.
+   limited to the production origin, `https://moments-timeline-rho.vercel.app/*`,
+   and **`https://docs.google.com/*`**. Google Picker runs inside a docs.google.com
+   iframe and its requests require that referrer too. Keep the API restriction
+   set to Google Picker API; server-side Drive calls use OAuth, not this API key.
    Record the **numeric project number**, not the project ID.
 5. Save credentials in ignored `.credentials/google.json`, file mode 600, directory
    mode 700. Never put secrets in chat, Git, or browser environment variables:

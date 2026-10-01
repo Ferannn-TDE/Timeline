@@ -1,5 +1,37 @@
 # Verification record
 
+## Real Google Picker blank-modal diagnosis (2026-09-30)
+
+- Reproduced the real Google JavaScript Picker in extension-free Chrome on the
+  production origin using a freshly refreshed, existing approved-user OAuth token
+  held only in memory. No mocked Picker or admin-issued journal session was used
+  for this reproduction; the journal was not modified and real sync stayed disabled.
+- Confirmed CSS collision: Google uses class `picker` on its dialog, backdrop and
+  content. The uploader's global `.picker` flex/centering/overflow rules applied to
+  all of those Google elements. Actual Google iframe width was 1 px. Renaming only
+  the application's stylesheet selectors restored its width to 1019 px, with the
+  same Google API, token, view and browser. Screenshots are protected/ignored locally.
+- Separate clean-browser evidence: docs.google.com/picker returned HTTP 401 and
+  displayed a Google sign-in requirement. Its Sign in control became visible after
+  CSS isolation. This browser had no Google cookies and no extensions. No CSP or
+  extension violation was observed; this does not diagnose the owner's cookies.
+- Fixed uploader class/selectors to `photo-picker`; Google `.picker` is untouched.
+  Added independent, always-accessible Close controls, Escape cleanup, component
+  unmount cancellation, a 15-second script timeout and two-minute selection deadline.
+  Errors survive background polling and permit a new selection attempt.
+- Official Google web-Picker documentation now requires docs.google.com/* as well
+  as the website in website-restricted API keys. Corrected setup guidance; actual
+  Cloud key restrictions remain unverified without account-owner access. No broader
+  OAuth scopes or public photo access were introduced.
+- Fresh token refresh/drive.file scope, numeric project number/client-prefix
+  alignment, production origin and native Google Docs view were checked. No
+  successful authenticated file list, exact target selection or server inspection
+  has yet been observed; Google account interaction remains necessary.
+- TypeScript/production build and targeted browser recovery checks passed. The
+  recovery tests use simulated Picker callbacks and do not count as real selection.
+  Acceptance/activation report fields remain unmodified, real writes disabled, and
+  the July 25, 2026 entry remains pending. Neither shared document was written.
+
 ## Queued genuine entry diagnosis (2026-09-30)
 
 - Traced the existing July 25, 2026 entry through its durable outbox: pending,

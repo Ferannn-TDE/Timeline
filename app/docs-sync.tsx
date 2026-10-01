@@ -16,7 +16,10 @@ const labels: Record<string, string> = {
 export default function DocsSync({ db, revision, onState }: { db: SupabaseClient; revision: string; onState: (state: string) => void }) {
   const [status, setStatus] = useState<Status | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [authorizationNotice, setAuthorizationNotice] = useState("");
+  const [actionError, setActionError] = useState("");
   const running = useRef(false), active = useRef(true), version = useRef(0);
+  const pickerAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => pickerAbort.current?.abort(), []);
   const request = useCallback(async (path: string, body?: unknown) => {
     const session = await db.auth.getSession();
     if (!session.data.session) throw Error("Sign in again to access Google Docs syncing.");
@@ -53,34 +56,36 @@ export default function DocsSync({ db, revision, onState }: { db: SupabaseClient
     if (result) { url.searchParams.delete("docs"); window.history.replaceState(null, "", url); }
   }, []);
   async function connect() {
-    setBusy(true); setError(""); setAuthorizationNotice("");
+    setBusy(true); setActionError(""); setAuthorizationNotice("");
     try { const data = await request("connect", {}); window.location.assign(data.url); }
-    catch (e) { setError(e instanceof Error ? e.message : "Google Docs connection failed."); setBusy(false); }
+    catch (e) { setActionError(e instanceof Error ? e.message : "Google Docs connection failed."); setBusy(false); }
   }
   async function pickDocument() {
-    setBusy(true); setError("");
+    setBusy(true); setActionError("");
+    const controller = new AbortController(); pickerAbort.current = controller;
     try {
       const config = await request("picker", {});
+      if (controller.signal.aborted) return;
       await openGooglePicker(config, async id => {
         if(id !== config.document_id) throw Error("Select the supplied Moments Timeline document.");
         await request("picker", { document_id: id });
         await refresh();
-      });
-    } catch(e) {setError(e instanceof Error ? e.message : "The document could not be selected.");}
-    finally {setBusy(false);}
+      }, controller.signal);
+    } catch(e) {if (active.current) setActionError(e instanceof Error ? e.message : "The document could not be selected.");}
+    finally {pickerAbort.current = null; if (active.current) setBusy(false);}
   }
   async function retry() {
-    setBusy(true); setError("");
+    setBusy(true); setActionError("");
     try { await request("sync", { retry: true }); }
-    catch (e) { setError(e instanceof Error ? e.message : "Sync failed; changes remain queued."); }
+    catch (e) { setActionError(e instanceof Error ? e.message : "Sync failed; changes remain queued."); }
     finally { setBusy(false); void refresh(); }
   }
   async function resolve(conflict: Conflict, choice: "document" | "website") {
     const question = choice === "document" ? "Keep this Google Docs page exactly as it is? The website entry will remain unchanged." : conflict.website ? "Replace this Google Docs page with the website date, photo, and caption? This replaces the manual edits on that page." : "Remove this Google Docs page? The corresponding website entry has been deleted.";
     if (!confirm(question)) return;
-    setBusy(true); setError("");
+    setBusy(true); setActionError("");
     try { await request("conflicts", { entry_id: conflict.entry_id, choice, document_hash: conflict.document_hash, desired_hash: conflict.desired_hash }); await request("sync", { retry: true }); }
-    catch (e) { setError(e instanceof Error ? e.message : "The conflict could not be resolved."); }
+    catch (e) { setActionError(e instanceof Error ? e.message : "The conflict could not be resolved."); }
     finally { setBusy(false); void refresh(); }
   }
   return <section className="docs-panel" aria-label="Shared Google Docs document">
@@ -95,7 +100,7 @@ export default function DocsSync({ db, revision, onState }: { db: SupabaseClient
     {(!status?.connection || status.state === "authorization_required") && <button type="button" className="primary" disabled={busy} onClick={connect}>Connect Google Docs</button>}
     {status?.connection?.enabled && <button type="button" className="refresh" disabled={busy || status.state === "syncing"} onClick={retry}>{busy ? "Checking…" : "Sync / retry Google Docs"}</button>}
     <p className="footnote">Your timeline saves separately. Google Docs updates preserve manual edits and pause conflicting changes.</p>
-    {(error || status?.connection?.last_error) && <p className="docs-error" role="alert">{error || status?.connection?.last_error}</p>}
+    {(actionError || error || status?.connection?.last_error) && <p className="docs-error" role="alert">{actionError || error || status?.connection?.last_error}</p>}
     {status?.conflicts.map(conflict => <div className="docs-conflict" key={conflict.entry_id}>
       <h3>Choose a version</h3><p>{conflict.reason}</p>
       <strong>Website</strong><p>{conflict.website ? conflict.website.photo_date + "\n" + conflict.website.caption : "Entry deleted on the website"}</p>

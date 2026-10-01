@@ -209,6 +209,58 @@ test("missing document selection explains queued uploads and Picker errors allow
   expect(syncCalls).toBe(0);
 });
 
+test("blank Google Picker has independent close controls and uploader CSS cannot collapse its iframe", async ({ page }) => {
+  await backend(page);
+  await page.route("**/api/docs/status", route => route.fulfill({ json: { state: "document_selection_required", pending: 1, connection: { enabled: false, document_name: "Shared doc", document_url: "https://docs.google.com/document/d/test/edit" }, conflicts: [], entries: [] } }));
+  await page.route("**/api/docs/picker", route => route.fulfill({ json: { access_token: "temporary-test-only", picker_key: "test-only", project_number: "123", document_id: "test" } }));
+  await page.addInitScript(() => {
+    class View { setMimeTypes() { return this; } }
+    class Builder {
+      addView() { return this; } setAppId() { return this; } setDeveloperKey() { return this; }
+      setOAuthToken() { return this; } setOrigin() { return this; } setTitle() { return this; } setCallback() { return this; }
+      build() {
+        const dialog = document.createElement("div"); dialog.className = "picker picker-dialog"; dialog.style.width = "800px";
+        const frame = document.createElement("iframe"); frame.style.width = "100%"; dialog.append(frame);
+        return { dispose: () => dialog.remove(), setVisible: () => document.body.append(dialog) };
+      }
+    }
+    (window as any).google = { picker: { DocsView: View, ViewId: { DOCS: "docs" }, PickerBuilder: Builder, Action: { ERROR: "error", PICKED: "picked", CANCEL: "cancel" } } };
+  });
+  await page.goto("/");
+  const select = page.getByRole("button", { name: "Select shared Google Doc" });
+  await select.click();
+  const frame = page.locator(".picker-dialog iframe"); await expect(frame).toBeVisible();
+  expect((await frame.boundingBox())!.width).toBeGreaterThan(750);
+  await page.getByRole("button", { name: "Close Google Doc selection" }).click();
+  await expect(frame).toHaveCount(0); await expect(select).toBeEnabled();
+  await select.click(); await expect(frame).toBeVisible();
+  await page.getByRole("button", { name: "Close Google Doc selection" }).click();
+  await expect(select).toBeEnabled();
+  await page.clock.install();
+  await select.click(); await expect(frame).toBeVisible();
+  await page.clock.fastForward(121000);
+  const alert = page.getByRole("region", { name: "Shared Google Docs document" }).getByRole("alert");
+  await expect(alert).toContainText("did not finish within two minutes");
+  await expect(frame).toHaveCount(0); await expect(select).toBeEnabled();
+  await page.clock.fastForward(31000);
+  await expect(alert).toContainText("did not finish within two minutes");
+});
+
+test("a stalled Google script times out with a visible error and allows retry", async ({ page }) => {
+  await backend(page);
+  await page.clock.install();
+  await page.route("**/api/docs/status", route => route.fulfill({ json: { state: "document_selection_required", pending: 1, connection: { enabled: false, document_name: "Shared doc", document_url: "https://docs.google.com/document/d/test/edit" }, conflicts: [], entries: [] } }));
+  await page.route("**/api/docs/picker", route => route.fulfill({ json: { access_token: "temporary-test-only", picker_key: "test-only", project_number: "123", document_id: "test" } }));
+  await page.route("https://apis.google.com/js/api.js", () => {});
+  await page.goto("/");
+  const select = page.getByRole("button", { name: "Select shared Google Doc" });
+  await select.click(); await expect(page.getByRole("button", { name: "Close Google Doc selection" })).toBeVisible();
+  await page.clock.fastForward(16000);
+  await expect(page.getByRole("region", { name: "Shared Google Docs document" }).getByRole("alert")).toContainText("script did not load within 15 seconds");
+  await expect(page.getByRole("button", { name: "Close Google Doc selection" })).toHaveCount(0);
+  await expect(select).toBeEnabled();
+});
+
 test("Google sign-in starts Supabase OAuth with the production return origin and no document scopes", async ({ page }) => {
   await backend(page, null);
   let requested = "";
