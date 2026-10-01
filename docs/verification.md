@@ -1,5 +1,34 @@
 # Verification record
 
+## Live Google Docs recovery (2026-10-01)
+
+- Confirmed a missing newline joined the managed start marker to the first
+  September 12 date. The worker correctly stopped at its paragraph-boundary
+  guard; OAuth and document access were valid, with no unfinished write.
+- Tested a targeted repair on a private copy of the actual document. Restored
+  only the separator, its two affected named ranges, date paragraph layout and
+  saved character formatting. Verified all 11 existing images, captions, other
+  paragraphs, page settings and range identities were preserved. Reviewed its PDF.
+- Google initially reset date character formatting during the paragraph split;
+  added explicit replay of the saved date styles and a regression assertion.
+  Verified that fix on the temporary copy before restoring the live date. Its
+  hash now matches the original baseline; no baseline hashes were reset.
+- Applied revision-checked repairs under a worker lease with private recovery
+  backups. The production worker committed two batches totaling 42 outbox events,
+  using the latest saved state. Observed all 49 current entries in the exact target
+  Doc: matching dates/captions, one embedded image per entry, website order,
+  no duplicate entry ranges, zero pending events and zero conflicts.
+- Downloaded actual embedded Google images and inspected the real document's PDF:
+  49 photo pages, one uncropped photo on each, date above and caption below.
+  Visually checked the newest October 1 call-log entry, July 25 graduation photo
+  and March 12 New York photo. The pre-existing opening blank page was preserved.
+- Retried an unchanged genuine September 30 entry through the database outbox
+  notification. It synchronized automatically with zero attempts/failures, without
+  changing the journal record or duplicating a document page. No disposable entries
+  were inserted and no browser-test guard was bypassed. Private storage, editor
+  restrictions and conflict protection remain intact; Microsoft was untouched.
+- Passed 29 unit tests, TypeScript checking and the production build.
+
 ## HEIC/HEIF uploads (2026-10-01)
 
 - Actual libheif-js 1.23.2 browser-worker decoding, not mocked conversion: genuine

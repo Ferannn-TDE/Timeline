@@ -10,6 +10,7 @@ import { DOCUMENT_ID } from "../lib/docs/server.ts";
 import sharp from "sharp";
 import { prepareDocsImage } from "../lib/docs/image.ts";
 import { DocumentFixture } from "./docs-fixture.ts";
+import { missingStartSeparator, verifySeparatorRepair } from "../lib/docs/boundary-repair.ts";
 import type { Row } from "../lib/journal.ts";
 import type { Baseline, Resolution } from "../lib/docs/types.ts";
 
@@ -46,6 +47,26 @@ function journal() {
   };
   return { fixture, plan, apply, baselines: () => baselines };
 }
+
+test("separator recovery restores only one newline and refuses changed captions/photos",async()=>{
+  const j=journal(),first=row();await j.apply(new Map([[first.id,first]]));
+  const healthy=j.fixture.document(),model=documentModel(healthy,connection),damaged=structuredClone(healthy);
+  const tab=damaged.tabs[0].documentTab,body=tab.body.content,index=model.start!.end-1;
+  const markerAt=body.findIndex((item:any)=>item.startIndex===model.start!.start),marker=body[markerAt],date=body[markerAt+1];
+  marker.paragraph.elements[0].textRun.content="\u2060";marker.paragraph.elements[0].endIndex--;
+  marker.paragraph.elements.push(...date.paragraph.elements);marker.endIndex=date.endIndex;body.splice(markerAt+1,1);
+  const shift=(value:any)=>{if(!value||typeof value!=="object")return;for(const [key,item]of Object.entries(value)){if(key==='startIndex'&&Number(item)>=index)value[key]=Number(item)-1;else if(key==='endIndex'&&Number(item)>index)value[key]=Number(item)-1;else shift(item);}};
+  shift(damaged);
+  const plan=missingStartSeparator(damaged,connection);assert.equal(plan.firstEntry,first.id);assert.equal(plan.index,index);
+  assert.deepEqual(plan.requests.filter(r=>r.insertText).map(r=>r.insertText.text),['\n']);assert.equal(plan.requests.some(r=>r.deleteContentRange||r.insertInlineImage||r.replaceAllText),false);
+  assert.equal(verifySeparatorRepair(damaged,healthy,connection).blocks.size,1);
+  const fontChanged=structuredClone(healthy);fontChanged.tabs[0].documentTab.body.content.find((item:any)=>item.startIndex===model.start!.end).paragraph.elements[0].textRun.textStyle={fontSize:{magnitude:10,unit:"PT"}};
+  assert.throws(()=>verifySeparatorRepair(damaged,fontChanged,connection),/Date character formatting/);
+  assert.throws(()=>missingStartSeparator(healthy,connection));
+  const edited=structuredClone(healthy);edited.tabs[0].documentTab.body.content.find((item:any)=>item.paragraph?.elements.some((e:any)=>e.textRun?.content.includes(first.caption))).paragraph.elements[0].textRun.content='Changed caption\n';
+  assert.throws(()=>verifySeparatorRepair(damaged,edited,connection),/changed image, caption/);
+  const imageChanged=structuredClone(healthy);const object=Object.values(imageChanged.tabs[0].documentTab.inlineObjects)[0] as any;object.inlineObjectProperties.embeddedObject.imageProperties.sourceUri='changed';assert.throws(()=>verifySeparatorRepair(damaged,imageChanged,connection),/changed image, caption/);
+});
 
 test("inspection never mutates existing content and pages append outside original material", async () => {
   const j = journal(), original = j.fixture.document(), first = row();

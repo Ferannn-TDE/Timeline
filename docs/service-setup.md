@@ -84,6 +84,28 @@ live syncing complete; a no-op against an empty journal is insufficient.
 The live browser regression refuses disposable fixtures while Docs syncing is enabled.
 Never bypass that guard against the real document.
 
+## Missing start-separator recovery
+
+If recovery inspection confirms that only the newline between the invisible start
+marker and the first date disappeared, use
+`node --experimental-transform-types scripts/repair-docs-separator.ts`.
+This operator tool requires the enabled connection to be in `recovery_required`,
+with no unfinished write. It repairs a private temporary copy first and verifies
+that images, captions, other paragraphs, page settings and range identities survive.
+It refuses other kinds of document damage.
+
+Export the temporary copy identified by `.credentials/docs-repair/report.json`
+as a PDF and inspect its layout. Only after actual review may `layout_review` be
+marked `passed`. Then run the same command with `--apply`. It checks that the real
+revision has not changed, obtains the worker lease, saves a private recovery
+snapshot and conditionally restores the separator, its two affected ranges and
+the date's page break. It preserves existing baseline hashes, so direct edits
+in Google Docs still receive normal conflict protection. Failed events are
+reset for retry only after preservation checks pass. Verify actual entries in the
+target Doc and the production queue after resuming; a repaired marker alone is
+not proof that the backlog synchronized. Do not use this tool to bypass other
+recovery or activation requirements.
+
 ## References
 
 - [Supabase Google setup](https://supabase.com/docs/guides/auth/social-login/auth-google)
