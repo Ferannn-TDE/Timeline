@@ -5,6 +5,18 @@ and private storage. Approved editors: feranmidyro@gmail.com and kieragreen50@gm
 Entries sort newest first and display uncropped portraits. Both editors can upload,
 edit and remove shared memories; stale updates are rejected.
 
+Uploads accept JPEG, PNG, WebP, HEIC and HEIF up to 10 MB. HEIC/HEIF is decoded
+locally in a cancellable browser worker with libheif-js 1.23.2 (bundled WebAssembly;
+no native HEVC dependencies on Vercel). Container detection handles missing or
+inconsistent iPhone MIME types. The primary still photo is decoded with its HEIF
+orientation, limited to 80 megapixels/20,000 pixels per side, and proportionally
+resized to a 2,000-pixel longest edge. No cropping is applied. A private JPEG
+derivative powers previews and Docs; the original bytes are retained privately.
+Animation, auxiliary depth images and HDR metadata are retained in the original
+but are not reproduced in the JPEG preview. Current browsers need workers,
+WebAssembly, createImageBitmap and OffscreenCanvas. Conversion times out after
+two minutes and creates no storage objects or entries until successful.
+
 - Production: https://moments-timeline-rho.vercel.app
 - GitHub: https://github.com/Ferannn-TDE/Timeline
 - Supabase: Timeline (`rnilakqmyanujehtqbuk`)
@@ -37,6 +49,10 @@ private photos and file limits. Migrations 002/003 retain historical Word state.
 Migration 004 switches the outbox to Google Docs, creates private server tables and
 buckets, and disables Word jobs. Journal entries/photos and external documents are
 not deleted. Check verification notes before applying any migration again.
+Migration 005 only extends the private photo bucket MIME allowlist for HEIC/HEIF.
+HEIF originals use immutable `.heic`/`.heif` keys; their JPEG derivatives append
+`.preview.jpg`. Both objects upload before entry insertion, are rolled back if
+insertion fails, and are removed together when the entry is deleted.
 
 ## Google Docs updates
 
@@ -65,6 +81,13 @@ fixtures are refused while Docs syncing is enabled.
 scripts/docs-acceptance.ts runs real API checks on a new temporary Doc after consent.
 scripts/activate-docs.mjs refuses activation until login, layout, sharing and API
 acceptance checks pass. See [actual verification results](docs/verification.md).
+
+After the isolated HEIC browser tests produce their actual JPEG derivative,
+`node --experimental-transform-types scripts/heif-docs-acceptance.ts` tests it in
+a newly created temporary Google Doc. It never inserts journal fixture entries
+or writes to the real Doc, and can run without changing live-sync activation.
+Review the protected PDF in `.credentials/heif-acceptance/layout.pdf`.
+This does not bypass the existing live-journal fixture guard.
 
 ## Earlier site
 

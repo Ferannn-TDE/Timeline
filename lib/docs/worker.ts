@@ -1,4 +1,5 @@
 import { prepareDocsImage } from "./image.ts";
+import { photoDisplayKey } from "../photos.ts";
 import { randomUUID } from "node:crypto";
 import { serviceDb, encrypt, decrypt, HttpError, DOCUMENT_ID } from "./server.ts";
 import { exchangeToken, Google, ensurePrivateEditors } from "./google.ts";
@@ -110,7 +111,7 @@ export async function syncDocs() {
     const resolutions = new Map<string, Resolution>((conflicts.data || []).filter(c => c.resolution).map(c => [c.entry_id, c.resolution]));
     const plan = await planDocument({ document, connection: connection.id, operation, desired, baselines, resolutions, allowCreateRegion: !connection.inspection.region,
       photo: async row => {
-        const downloaded = await db.storage.from("photo-journal").download(row.image_key);
+        const downloaded = await db.storage.from("photo-journal").download(photoDisplayKey(row.image_key));
         if (downloaded.error) throw new HttpError(422, "A journal photo is unavailable. Its entry remains saved and queued.");
         const image = await prepareDocsImage(new Uint8Array(await downloaded.data.arrayBuffer()));
         const key = operation + "/" + row.id + ".png";

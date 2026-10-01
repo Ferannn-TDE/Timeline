@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { type SupabaseClient, type User } from "@supabase/supabase-js";
 import DocsSync from "./docs-sync";
 import { getJournalClient } from "@/lib/client";
+import { preparePhoto, type PreparedPhoto } from "@/lib/prepare-photo";
 
 import { APPROVED_EMAILS, addEntry, editEntry, deleteEntry, loadEntries, errorMessage, type Entry } from "@/lib/journal";
 
@@ -15,6 +16,7 @@ export default function Home(){
   const [entries,setEntries]=useState<Entry[]>([]),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
   const [error,setError]=useState(""),[message,setMessage]=useState(""),[email,setEmail]=useState("");
   const [photo,setPhoto]=useState<File|null>(null),[preview,setPreview]=useState(""),[date,setDate]=useState(""),[caption,setCaption]=useState("");
+  const [prepared,setPrepared]=useState<PreparedPhoto|null>(null),[conversion,setConversion]=useState(""),[conversionError,setConversionError]=useState("");
   const [editing,setEditing]=useState<Entry|null>(null),[editDate,setEditDate]=useState(""),[editCaption,setEditCaption]=useState("");
   const input=useRef<HTMLInputElement>(null);
   const refreshVersion=useRef(0);
@@ -64,16 +66,24 @@ export default function Home(){
     const {data,error:authError}=await db.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin,queryParams:{prompt:"select_account",include_granted_scopes:"false"},skipBrowserRedirect:true}});
     if(authError)throw authError;if(!data.url)throw Error("Google sign-in could not start.");window.location.assign(data.url);
   }catch(e){setError(errorMessage(e,"Could not sign in with Google."));setBusy(false)}}
-  useEffect(()=>{if(!photo){setPreview("");return}const local=URL.createObjectURL(photo);setPreview(local);return()=>URL.revokeObjectURL(local)},[photo]);
+  useEffect(()=>{
+    const abort=new AbortController();let local="";setPrepared(null);setPreview("");setConversionError("");
+    if(!photo){setConversion("");return}
+    setConversion("Checking photo…");
+    void preparePhoto(photo,status=>{if(!abort.signal.aborted)setConversion(status)},abort.signal).then(result=>{
+      if(abort.signal.aborted)return;setPrepared(result);local=URL.createObjectURL(result.preview||result.original);setPreview(local);setConversion("");
+    }).catch(e=>{if(!abort.signal.aborted){setConversion("");setConversionError(errorMessage(e,"Photo conversion failed. Nothing has been uploaded."))}});
+    return()=>{abort.abort();if(local)URL.revokeObjectURL(local)};
+  },[photo]);
   async function signIn(e:React.FormEvent){e.preventDefault();if(!db||busy)return;setBusy(true);setError("");setMessage("");try{
     const normalizedEmail=email.trim().toLowerCase();
     if(!APPROVED_EMAILS.includes(normalizedEmail))throw Error("This journal is shared with its two approved editors only.");
     const {error:authError}=await db.auth.signInWithOtp({email:normalizedEmail,options:{emailRedirectTo:window.location.origin,shouldCreateUser:true}});
     if(authError)throw authError;setMessage("Check your email for a sign-in link.");
   }catch(e){setError(errorMessage(e,"Could not send the sign-in link."))}finally{setBusy(false)}}
-  async function add(e:React.FormEvent){e.preventDefault();if(!db||!user||!photo||busy)return;setBusy(true);setError("");setMessage("");
+  async function add(e:React.FormEvent){e.preventDefault();if(!db||!user||!prepared||busy)return;setBusy(true);setError("");setMessage("");
     try{
-      await addEntry(db,user.email || "",photo,date,caption);
+      await addEntry(db,user.email || "",prepared.original,date,caption,prepared.preview);
       setPhoto(null);setDate("");setCaption("");if(input.current)input.current.value="";
       setMessage("Photo saved to the timeline in date order. Check Google Docs sync status below.");await refresh(db,user);
     }catch(e){setError(errorMessage(e,"Could not save photo."))}
@@ -117,12 +127,14 @@ export default function Home(){
     !member?<main className="auth"><h1>Access not enabled yet</h1><p>You’re signed in as {user.email}. This journal is available only to its two approved editors.</p><button className="primary" onClick={()=>refresh(db,user)}>Check access</button>{error&&<div className="notice error">{error}</div>}</main>:
     <main className="workspace">
       <aside className="composer"><div className="eyebrow">NEW ENTRY</div><h1>Add a memory</h1><p className="intro">Choose a photo, its date, and a caption. Older photos settle into the right place.</p><form onSubmit={add}>
-        <label className="photo-picker">{preview?<img src={preview} alt="Selected photo"/>:<><span className="plus">＋</span><b>Choose a photo</b><span>JPEG, PNG or WebP · up to 10 MB</span></>}
-          <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setPhoto(e.target.files?.[0]||null)} required/></label>
+        <label className="photo-picker">{preview?<img src={preview} alt="Selected photo"/>:<><span className="plus">＋</span><b>Choose a photo</b><span>JPEG, PNG, WebP, HEIC or HEIF · up to 10 MB</span></>}
+          <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" disabled={busy} onChange={e=>{setPrepared(null);setPhoto(e.target.files?.[0]||null)}} required/></label>
+        {conversion&&<div role="status" aria-live="polite">{conversion}</div>}
+        {conversionError&&<div className="notice error" role="alert">{conversionError} <button type="button" onClick={()=>{if(photo)setPhoto(new File([photo],photo.name,{type:photo.type}))}}>Retry conversion</button></div>}
         {photo&&<div className="selected">{photo.name}<button type="button" onClick={()=>{setPhoto(null);if(input.current)input.current.value=""}}>Remove</button></div>}
         <label className="fieldlabel" htmlFor="date">Date of photo</label><input className="field" id="date" type="date" value={date} onChange={e=>setDate(e.target.value)} required/>
         <label className="fieldlabel" htmlFor="caption">Caption</label><textarea className="field caption" id="caption" placeholder="What happened in this moment?" maxLength={2000} value={caption} onChange={e=>setCaption(e.target.value)} required/>
-        <button className="primary" disabled={busy||!photo}>{busy?"Adding…":"Add to timeline"}</button></form>
+        <button className="primary" disabled={busy||!prepared||!!conversion}>{busy?"Adding…":conversion?"Preparing photo…":"Add to timeline"}</button></form>
         <DocsSync key={user.id} db={db} revision={entries.map(entry=>entry.id+entry.photo_date+entry.caption).join("|")} onState={setDocsState}/>
       </aside>
       <section className="feed" aria-label="Photo timeline"><div className="feedhead"><div><div className="eyebrow">PHOTO JOURNAL</div><h2>Our story</h2></div><button className="refresh" disabled={busy||loading} onClick={()=>refresh(db,user)}>Refresh</button><span className="count">{entries.length} {entries.length===1?"memory":"memories"}</span></div>

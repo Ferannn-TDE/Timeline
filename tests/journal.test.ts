@@ -2,11 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addEntry, editEntry, deleteEntry, loadEntries, validateEntry, validatePhoto, errorMessage, type Row } from "../lib/journal.ts";
+import {checkPixels,detectHeif,photoDisplayKey} from "../lib/photos.ts";
 
 const row: Row = { id: "entry-1", photo_date: "2020-01-01", caption: "Original", image_key: "photo.jpg", author_email: "feranmidyro@gmail.com", created_at: "2026-01-01T00:00:00Z" };
 const photo = new File([new Uint8Array([1, 2, 3])], "portrait.jpg", { type: "image/jpeg" });
 
-function fake(options: { queryData?: unknown[]; queryError?: { message: string }; uploadError?: { message: string }; cleanupError?: { message: string }; pages?: Row[][] } = {}) {
+function fake(options: { queryData?: unknown[]; queryError?: { message: string }; uploadError?: { message: string }; failUploadAt?:number; cleanupError?: { message: string }; pages?: Row[][] } = {}) {
   const calls: { name: string; args: unknown[] }[] = [];
   let page = 0;
   const query: Record<string, unknown> = {};
@@ -19,7 +20,7 @@ function fake(options: { queryData?: unknown[]; queryError?: { message: string }
     storage: { from: (name: string) => {
       assert.equal(name, "photo-journal");
       return {
-        upload: async (...args: unknown[]) => { calls.push({ name: "upload", args }); return { error: options.uploadError || null }; },
+        upload: async (...args: unknown[]) => { calls.push({ name: "upload", args }); return { error: options.failUploadAt===calls.filter(c=>c.name==='upload').length ? {message:'Derivative upload failed'} : options.uploadError || null }; },
         remove: async (...args: unknown[]) => { calls.push({ name: "remove", args }); return { error: options.cleanupError || null }; },
         createSignedUrls: async (paths: string[]) => ({ data: paths.map(path => ({ path, signedUrl: path === "missing.jpg" ? "" : "https://photos.test/" + path })), error: null }),
       };
@@ -41,6 +42,19 @@ test("upload failure never removes an object it did not upload", async () => {
   const { client, calls } = fake({ uploadError: { message: "Upload denied" } });
   await assert.rejects(addEntry(client, row.author_email, photo, row.photo_date, row.caption), { message: "Upload denied" });
   assert.equal(calls.some(call => call.name === "remove" || call.name === "insert"), false);
+});
+
+test("HEIF originals require conversion before writes; both private objects roll back together",async()=>{
+  const heic=new File([new Uint8Array([1,2,3])],"iphone.HEIC",{type:"application/octet-stream"});
+  validatePhoto(heic);validatePhoto({name:"iphone.heif",type:"image/jpeg",size:10});
+  checkPixels(8064,6048);assert.throws(()=>checkPixels(12000,12000));
+  const missing=fake();await assert.rejects(addEntry(missing.client,row.author_email,heic,row.photo_date,row.caption),/Convert/);assert.equal(missing.calls.length,0);
+  const preview=new File([new Uint8Array([1])],"preview.jpg",{type:"image/jpeg"});
+  const failed=fake({queryError:{message:"Insert denied"}});await assert.rejects(addEntry(failed.client,row.author_email,heic,row.photo_date,row.caption,preview));
+  const keys=failed.calls.filter(c=>c.name==="upload").map(c=>c.args[0]);assert.equal(keys.length,2);assert.equal(keys[1],photoDisplayKey(keys[0] as string));assert.deepEqual(failed.calls.find(c=>c.name==="remove")!.args,[keys]);
+  const derivativeFailure=fake({failUploadAt:2});await assert.rejects(addEntry(derivativeFailure.client,row.author_email,heic,row.photo_date,row.caption,preview),{message:'Derivative upload failed'});assert.equal(derivativeFailure.calls.some(c=>c.name==='insert'),false);assert.equal(derivativeFailure.calls.filter(c=>c.name==='remove').length,1);
+  const removed=fake({queryData:[{id:row.id}]});await deleteEntry(removed.client,{...row,image_key:'original.heic'});assert.deepEqual(removed.calls.find(c=>c.name==='remove')!.args,[['original.heic','original.heic.preview.jpg']]);
+  const bytes=new Uint8Array(24);new DataView(bytes.buffer).setUint32(0,24);bytes.set(new TextEncoder().encode("ftypheic"),4);assert.equal(await detectHeif(new Blob([bytes])),true);
 });
 
 test("failed database insert cleans only its newly uploaded object", async () => {

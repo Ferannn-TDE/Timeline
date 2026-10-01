@@ -6,16 +6,19 @@ const image = readFileSync("tests/fixtures/portrait.png");
 const initial: RecordRow = { id: "a", photo_date: "2025-06-15", caption: "Our recent memory", image_key: "recent.png", author_email: "feranmidyro@gmail.com", created_at: "2026-01-01T00:00:00Z" };
 
 async function backend(page: Page, email: string | null = "feranmidyro@gmail.com", rows: RecordRow[] = [{ ...initial }]) {
+  // Production-assets verification still intercepts EVERY Supabase request.
+  // It never creates a real journal fixture or bypasses tests/live's guard.
+  const project=process.env.HEIF_PRODUCTION_ASSETS_ONLY==='1'?'rnilakqmyanujehtqbuk':'fake-project';
   const user = { id: "11111111-1111-4111-8111-111111111111", email, aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "2026-01-01T00:00:00Z" };
   if (email) {
     const expires = Math.floor(Date.now() / 1000) + 3600;
     const token = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url") + "." + Buffer.from(JSON.stringify({ sub: user.id, email, exp: expires, role: "authenticated" })).toString("base64url") + ".test";
-    await page.addInitScript(({ user, token, expires }) => localStorage.setItem("sb-fake-project-auth-token", JSON.stringify({ access_token: token, refresh_token: "test-refresh", expires_at: expires, expires_in: 3600, token_type: "bearer", user })), { user, token, expires });
+    await page.addInitScript(({ user, token, expires,project }) => localStorage.setItem("sb-"+project+"-auth-token", JSON.stringify({ access_token: token, refresh_token: "test-refresh", expires_at: expires, expires_in: 3600, token_type: "bearer", user })), { user, token, expires,project });
   }
   await page.route("**/api/auth/providers", route => route.fulfill({json:{google:true,available:true}}));
   await page.route("**/api/docs/status", route => route.fulfill({contentType:"application/json",body:JSON.stringify({state:"authorization_required",pending:0,connection:null,conflicts:[],entries:[]})}));
-  const state = { rows, uploads: 0, deletes: 0, otps: 0, delayReads: false, cleanupError: false };
-  await page.route("https://fake-project.supabase.co/**", async route => {
+  const state = { rows, uploads: 0, deletes: 0, otps: 0, delayReads: false, cleanupError: false, stored: new Map<string,{bytes:Buffer,type:string}>() };
+  await page.route("https://"+project+".supabase.co/**", async route => {
     const request = route.request();
     const url = new URL(request.url());
     const method = request.method();
@@ -36,8 +39,14 @@ async function backend(page: Page, email: string | null = "feranmidyro@gmail.com
       if (method === "DELETE") { state.rows = state.rows.filter(row => row !== target); return reply([{ id: target.id }]); }
     }
     if (url.pathname === "/storage/v1/object/sign/photo-journal") return reply(request.postDataJSON().paths.map((path: string) => ({ path, signedURL: "/object/sign/photo-journal/" + path, error: null })));
-    if (method === "GET" && url.pathname.startsWith("/storage/v1/object/sign/")) return route.fulfill({ contentType: "image/png", body: image });
-    if (method === "POST" && url.pathname.startsWith("/storage/v1/object/photo-journal/")) { state.uploads++; return reply({ Key: "photo-journal/new.png" }); }
+    if (method === "GET" && url.pathname.startsWith("/storage/v1/object/sign/")) {const stored=state.stored.get(url.pathname.split('/photo-journal/')[1]);return route.fulfill({ contentType: stored?.type||"image/png", body: stored?.bytes||image });}
+    if (method === "POST" && url.pathname.startsWith("/storage/v1/object/photo-journal/")) {
+      state.uploads++;
+      const form=await new Request(url,{method:'POST',headers:request.headers(),body:new Uint8Array(request.postDataBuffer()!)}).formData();
+      const file=[...form.values()].find(value=>value instanceof Blob) as File;
+      state.stored.set(url.pathname.split('/photo-journal/')[1],{bytes:Buffer.from(await file.arrayBuffer()),type:file.type});
+      return reply({ Key: "photo-journal/new.png" });
+    }
     if (method === "DELETE" && url.pathname === "/storage/v1/object/photo-journal") { state.deletes++; return state.cleanupError ? reply({ message: "Cleanup failed" }, 500) : reply([]); }
     return reply({ message: "Unexpected mock request: " + method + " " + url.pathname }, 400);
   });
@@ -81,6 +90,36 @@ test("second editor sees the same shared entries and can edit them", async ({ pa
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.locator(".entrycaption")).toHaveText(["Edited by Kiera"]);
   expect(state.rows[0].author_email).toBe("feranmidyro@gmail.com");
+});
+
+for(const format of ['jpeg','png','webp'] as const)test(`${format} upload and preview remain supported`,async({page})=>{
+  const sharp=(await import('sharp')).default;
+  const bytes=await sharp(image).toFormat(format).toBuffer();const state=await backend(page);await page.goto('/');
+  await page.locator('input[type=file]').setInputFiles({name:'photo.'+format,mimeType:'image/'+format,buffer:bytes});
+  await expect(page.getByAltText('Selected photo')).toHaveJSProperty('naturalHeight',600);
+  await page.getByLabel('Date of photo').fill('2000-01-01');await page.getByLabel('Caption',{exact:true}).fill('Format test '+format);await page.getByRole('button',{name:'Add to timeline'}).click();
+  await expect(page.locator('article').filter({hasText:'Format test '+format}).locator('img')).toHaveJSProperty('naturalHeight',600);expect(state.uploads).toBe(1);
+});
+
+for(const fixture of [{file:'0003.heic',width:924},{file:'iphone_13_pro_max.HEIC',width:1500}])test(`real HEIC ${fixture.file} conversion displays a portrait and saves original plus JPEG; corrupt files save nothing`,async({page})=>{
+  test.setTimeout(120000);
+  const state=await backend(page);
+  await page.goto("/");
+  await expect(page.locator('input[type=file]')).toHaveAttribute('accept',/\.heic,.heif/);
+  await page.locator('input[type=file]').setInputFiles({name:'iphone.HEIF',mimeType:'application/octet-stream',buffer:readFileSync('tests/fixtures/'+fixture.file)});
+  const preview=page.getByAltText('Selected photo');await expect(preview).toBeVisible({timeout:90000});
+  await expect(preview).toHaveJSProperty('naturalHeight',2000);await expect(preview).toHaveJSProperty('naturalWidth',fixture.width);
+  // Save the actual decoder output for the independent live temporary-Doc test.
+  const bytes=await preview.evaluate(async node=>Array.from(new Uint8Array(await(await fetch((node as HTMLImageElement).src)).arrayBuffer())));
+  const {mkdirSync,writeFileSync}=await import('node:fs');mkdirSync('artifacts/heif',{recursive:true});writeFileSync('artifacts/heif/'+fixture.file+'.jpg',Buffer.from(bytes));
+  await page.getByLabel('Date of photo').fill('2001-01-01');await page.getByLabel('Caption',{exact:true}).fill('Temporary HEIF browser test');await page.getByRole('button',{name:'Add to timeline'}).click();
+  await expect(page.locator('.entrycaption').filter({hasText:'Temporary HEIF browser test'})).toBeVisible();expect(state.uploads).toBe(2);const saved=state.rows.find(row=>row.caption==='Temporary HEIF browser test')!;expect(saved.image_key).toMatch(/\.heif$/);
+  expect(state.stored.get(saved.image_key)!.bytes).toEqual(readFileSync('tests/fixtures/'+fixture.file));
+  await expect(page.locator('article').filter({hasText:'Temporary HEIF browser test'}).locator('img')).toHaveJSProperty('naturalHeight',2000);
+  const before=state.rows.length;
+  await page.locator('input[type=file]').setInputFiles({name:'broken.heic',mimeType:'',buffer:Buffer.from('not an image')});
+  await expect(page.locator('.notice[role=alert]')).toContainText(/decoded|readable|corrupt|unsupported/,{timeout:90000});
+  await expect(page.getByRole('button',{name:'Add to timeline'})).toBeDisabled();expect(state.uploads).toBe(2);expect(state.rows.length).toBe(before);
 });
 
 test("sign-in form rejects an unapproved address and sends OTP for an editor", async ({ page }) => {

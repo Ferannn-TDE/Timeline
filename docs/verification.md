@@ -1,5 +1,42 @@
 # Verification record
 
+## HEIC/HEIF uploads (2026-10-01)
+
+- Actual libheif-js 1.23.2 browser-worker decoding, not mocked conversion: genuine
+  1125 × 2436 HEIC and 3024 × 4032 iPhone 13 Pro Max HEIC fixtures displayed
+  upright at 924 × 2000 and 1500 × 2000. Original bytes remained identical;
+  private JPEG derivatives displayed after saving to the isolated test backend.
+- JPEG, PNG and WebP uploads/previews passed browser tests. Corrupt HEIC files
+  left uploads/entries unchanged and saving disabled. Unit checks cover missing
+  conversion, partial derivative-upload failure, insertion rollback, deletion of
+  both private objects, MIME inconsistencies and decoded-image limits.
+- 28 unit tests, 22 isolated browser tests, typecheck and Next.js 16.3.8 build
+  passed. Both real-decoder browser tests passed again after final cleanup and
+  browser-capability checks. Dependency installation reported zero advisories
+  after applying the Next.js patch release.
+- Inspected the existing private photo bucket before applying migration 005;
+  HEIC/HEIF MIME types were added without changing privacy, the 10 MB limit,
+  entries, authentication policies or Docs activation.
+- `scripts/heif-docs-acceptance.ts` uploaded the real original and browser-produced
+  derivative privately, prepared the JPEG through the actual Docs Sharp path,
+  and inserted it into a new temporary Google Doc with ten-minute signed URLs.
+  Sorting, caption/date edits, deletion, retry duplicate prevention and manual
+  edits/conflicts passed against Google. Inspected the rendered PDF: two uncropped
+  portrait photo pages, date above and caption below. Fixture storage was cleaned.
+  Zero live-journal fixture entries and zero real-Doc writes; the real document
+  revision stayed unchanged. Live syncing remained enabled.
+- Production-assets browser verification uses
+  `HEIF_PRODUCTION_ASSETS_ONLY=1` with `playwright.heif-production.config.ts`.
+  Every Supabase request is intercepted by an isolated test backend; it tests the
+  actual deployed decoder/assets without bypassing the live-journal test guard.
+  This is not a substitute for actual Google authentication or live entry tests.
+
+Limits: 10 MB original, 80 MP decoded/20,000 pixels per side, 2,000-pixel preview
+longest edge, two-minute conversion deadline. HEIF primary still image only;
+motion/depth/HDR metadata stay in the original but not the JPEG derivative.
+The genuine high-resolution HEIC fixture tested here is 12 MP; the decoded-size
+validator also accepts common 48/64 MP dimensions within the 80 MP bound.
+
 ## Real Google Picker blank-modal diagnosis (2026-09-30)
 
 - Reproduced the real Google JavaScript Picker in extension-free Chrome on the

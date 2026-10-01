@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { photoType, photoDisplayKey, photoKeys, PHOTO_FORMATS, PHOTO_LIMIT } from "./photos.ts";
 
 export const BUCKET = "photo-journal";
 export const APPROVED_EMAILS = ["feranmidyro@gmail.com", "kieragreen50@gmail.com"];
@@ -18,9 +19,9 @@ export function validateEntry(date: string, caption: string) {
   if (!caption.trim() || caption.trim().length > 2000) throw Error("Add a caption between 1 and 2,000 characters.");
 }
 
-export function validatePhoto(photo: Pick<File, "type" | "size">) {
-  if (!["image/jpeg", "image/png", "image/webp"].includes(photo.type) || photo.size > 10_000_000 || photo.size === 0) {
-    throw Error("Choose a JPEG, PNG or WebP photo up to 10 MB.");
+export function validatePhoto(photo: Pick<File, "type" | "size"> & {name?:string}) {
+  if (!photoType(photo) || photo.size > PHOTO_LIMIT || photo.size === 0) {
+    throw Error(`Choose a ${PHOTO_FORMATS} photo up to 10 MB.`);
   }
 }
 
@@ -39,11 +40,11 @@ export async function loadEntries(client: SupabaseClient): Promise<Entry[]> {
   const entries: Entry[] = [];
   for (let offset = 0; offset < rows.length; offset += 100) {
     const batch = rows.slice(offset, offset + 100);
-    const { data, error } = await client.storage.from(BUCKET).createSignedUrls(batch.map(row => row.image_key), 3600);
+    const { data, error } = await client.storage.from(BUCKET).createSignedUrls(batch.map(row => photoDisplayKey(row.image_key)), 3600);
     if (error) throw error;
     const links = new Map((data || []).map(link => [link.path, link]));
     for (const row of batch) {
-      const link = links.get(row.image_key);
+      const link = links.get(photoDisplayKey(row.image_key));
       // One missing object must not hide the rest of the journal.
       entries.push({ ...row, imageUrl: link?.signedUrl || "" });
     }
@@ -51,16 +52,29 @@ export async function loadEntries(client: SupabaseClient): Promise<Entry[]> {
   return entries;
 }
 
-export async function addEntry(client: SupabaseClient, accountEmail: string, photo: File, date: string, caption: string) {
+export async function addEntry(client: SupabaseClient, accountEmail: string, photo: File, date: string, caption: string, preview: File | null = null) {
   validateEntry(date, caption);
   validatePhoto(photo);
-  const ext = photo.type === "image/png" ? "png" : photo.type === "image/webp" ? "webp" : "jpg";
+  const type=photoType(photo);
+  const heif=type === "image/heic" || type === "image/heif";
+  if(heif && (!preview || preview.type!=="image/jpeg" || preview.size===0 || preview.size>PHOTO_LIMIT))throw Error("Convert the HEIC/HEIF photo successfully before uploading. Nothing has been saved.");
+  const ext = type.slice(6)==="jpeg"?"jpg":type.slice(6);
   const imageKey = crypto.randomUUID() + "." + ext;
-  const { error: uploadError } = await client.storage.from(BUCKET).upload(imageKey, photo, { contentType: photo.type, upsert: false });
+  const { error: uploadError } = await client.storage.from(BUCKET).upload(imageKey, photo, { contentType: type, upsert: false });
   if (uploadError) throw uploadError;
+  if(heif){
+    const {error:previewError}=await client.storage.from(BUCKET).upload(photoDisplayKey(imageKey),preview!,{contentType:"image/jpeg",upsert:false});
+    if(previewError){
+      // A lost upload response can leave the derivative written. Both random
+      // keys belong to this attempt; clean both before reporting failure.
+      const {error:cleanupError}=await client.storage.from(BUCKET).remove(photoKeys(imageKey));
+      if(cleanupError)throw Error("The preview upload failed and its private photo files need storage cleanup. No journal entry was created.");
+      throw previewError;
+    }
+  }
   const { error: insertError } = await client.from("entries").insert({ photo_date: date, caption: caption.trim(), image_key: imageKey, author_email: accountEmail.toLowerCase() });
   if (insertError) {
-    const { error: cleanupError } = await client.storage.from(BUCKET).remove([imageKey]);
+    const { error: cleanupError } = await client.storage.from(BUCKET).remove(photoKeys(imageKey));
     if (cleanupError) throw Error(`${errorMessage(insertError, "Could not save photo.")} The uploaded photo could not be cleaned up; retry cleanup before uploading it again.`);
     throw insertError;
   }
@@ -79,6 +93,6 @@ export async function deleteEntry(client: SupabaseClient, original: Row): Promis
     .eq("photo_date", original.photo_date).eq("caption", original.caption).select("id");
   if (error) throw error;
   if (data?.length !== 1) throw Error("This entry changed or was already removed. Refresh the timeline before removing it again.");
-  const { error: cleanupError } = await client.storage.from(BUCKET).remove([original.image_key]);
+  const { error: cleanupError } = await client.storage.from(BUCKET).remove(photoKeys(original.image_key));
   return cleanupError ? "Entry removed, but its private photo could not be deleted from storage. Storage cleanup is still needed." : null;
 }
