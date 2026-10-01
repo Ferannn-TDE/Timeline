@@ -23,7 +23,7 @@ function loadPicker(): Promise<void> {
 }
 export async function openGooglePicker(config: PickerConfig, selected: (id: string) => Promise<void>, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
-    let picker: any, settled = false, checking = false;
+    let picker: any, settled = false, checking = false, observer: MutationObserver | undefined;
     const controls = document.createElement("div"); controls.className = "google-picker-controls";
     controls.setAttribute("role", "region"); controls.setAttribute("aria-label", "Google Docs file selection controls");
     const notice = document.createElement("span"); notice.textContent = "Loading Google Docs file selection…"; notice.setAttribute("role", "status");
@@ -31,7 +31,7 @@ export async function openGooglePicker(config: PickerConfig, selected: (id: stri
     controls.append(notice, close); document.body.append(controls);
     const finish = (error?: Error) => {
       if (settled) return; settled = true;
-      clearTimeout(timer); controls.remove(); signal?.removeEventListener("abort", cancel);
+      clearTimeout(timer); observer?.disconnect(); controls.remove(); signal?.removeEventListener("abort", cancel);
       window.removeEventListener("keydown", escape, true);
       try { picker?.dispose(); } catch { /* Close/retry remains usable if Google's cleanup fails. */ }
       if (error) reject(error); else resolve();
@@ -44,7 +44,16 @@ export async function openGooglePicker(config: PickerConfig, selected: (id: stri
     void loadPicker().then(() => {
       if (settled) return;
       const google = window.google;
-      const existingDialogs = new Set(document.querySelectorAll(".picker-dialog"));
+      const placeControls = () => {
+        if (settled) return;
+        // Google can create/reveal its modal asynchronously after setVisible.
+        const dialog = [...document.querySelectorAll(".picker-dialog")].find(element => element.getClientRects().length > 0);
+        if (dialog && controls.parentElement !== dialog) dialog.append(controls);
+        if (controls.hasAttribute("aria-hidden")) controls.removeAttribute("aria-hidden");
+        if (controls.inert) controls.inert = false;
+      };
+      observer = new MutationObserver(placeControls);
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class", "aria-hidden", "inert"] });
       const view = new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes("application/vnd.google-apps.document");
       picker = new google.picker.PickerBuilder().addView(view).setAppId(config.project_number).setDeveloperKey(config.picker_key).setOAuthToken(config.access_token).setOrigin(window.location.origin).setTitle("Select the Moments Timeline shared Google Doc").setCallback((data: any) => {
       if (settled || checking) return;
@@ -65,10 +74,7 @@ export async function openGooglePicker(config: PickerConfig, selected: (id: stri
       picker.setVisible(true);
       // Google's modal hides outside body children from assistive technology.
       // Keep our independent recovery controls within this newly created dialog.
-      const dialogs = [...document.querySelectorAll(".picker-dialog")];
-      const dialog = dialogs.find(element => !existingDialogs.has(element)) ?? dialogs.find(element => element.getClientRects().length > 0);
-      if (dialog) dialog.append(controls);
-      controls.removeAttribute("aria-hidden"); controls.inert = false;
+      placeControls();
     }).catch(error => finish(error instanceof Error ? error : Error("Google Picker could not load. Retry selection.")));
   });
 }
