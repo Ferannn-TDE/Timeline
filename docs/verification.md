@@ -1,5 +1,48 @@
 # Verification record
 
+## Google setup verification and activation safeguards (2026-09-30)
+
+- Inspected production READY deployment at commit b6fe1fa, the setup guide,
+  local credential files, Supabase Auth and Vercel environment metadata.
+- Initial audit found Google sign-in disabled, no Google variables in Vercel,
+  no Docs connection or Google identities, and zero journal entries. The local
+  Google file initially contained placeholders; those were not applied.
+- After the owner supplied actual local values, the configuration helper enabled
+  Supabase Google sign-in and verified its read-back. All four Google variables
+  were securely stored as sensitive Vercel Production variables. No secrets were
+  printed, committed, or added to Preview. Credential files are Git/upload ignored;
+  the Google file has mode 600 and its directory mode 700.
+- The project number is numeric and matches the OAuth client prefix. This is a
+  consistency check, not an independent Google Cloud project inspection.
+- Google Cloud APIs, consent audience/publishing status, test users, configured
+  scopes, registered redirects and Picker key restrictions remain unverified.
+  Actual Google login, Docs consent and target selection are still required.
+- Fresh live transactional journal/Docs assertions passed and rolled back:
+  both approved claims, rejection of unapproved/anonymous claims, private token
+  and storage access, insert/edit/delete outbox, exclusive/fenced leases and
+  atomic/idempotent recovery commit. These are SQL assertions, not Google logins.
+- Both photo/staging buckets remain private, entry RLS is enabled, journal and
+  notification triggers exist, and Microsoft connections remain disabled.
+- Vault worker URL/credential match expected secure configuration. The actual
+  production worker accepted its credential (HTTP 200) and returned
+  authorization_required; this does not prove Google updates or scheduling.
+- Fixed activation to hold the worker lease and freshly check exact document
+  identity, edit access, restricted two-editor sharing, revision, selected tab,
+  inspected connection, and absence of a prepared intent before enabling writes.
+  Changed or expired connection locks fail closed; report statuses must all pass.
+- Configuration now validates the numeric project number and Picker key before
+  changing Supabase, and protects prepared credential files with mode 600.
+- Temporary acceptance now invalidates a previous report, checks that real writes
+  remain disabled before temporary writes, and exports both photo pages before
+  deletion as well as a separate PDF afterward. These live tests and PDF inspection
+  have NOT been performed yet; they require genuine consent and file selection.
+- 26 local behavior/unit checks passed, including the new activation gate;
+  TypeScript checking and production build passed. Google API responses in unit
+  tests are simulated and do not count as live document acceptance.
+- Real document writes remain disabled. No Google document or former Microsoft
+  document has been written during this verification. No acceptance report fields
+  were marked passed and no activation was attempted.
+
 Work performed on 2026-09-30.
 
 - Local typecheck and production build passed.

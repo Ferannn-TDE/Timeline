@@ -67,10 +67,14 @@ It checks original sharing, exports a protected layout PDF, and verifies the ori
 revision is unchanged. Test photos never enter the real document. The temporary Doc
 remains available for layout review; its private staging image is removed afterward.
 
-Inspect `.credentials/docs-acceptance/layout-review.pdf` for one uncropped photo
-per page, date above and caption below. Verify both actual Google logins. Only after
+Inspect `.credentials/docs-acceptance/layout-review.pdf` with both photo pages,
+and `layout-after-deletion.pdf` after deletion, for one uncropped photo per page,
+date above and caption below. Verify both actual Google logins. Only after
 these checks may the operator mark the corresponding report fields as passed and
-run `node scripts/activate-docs.mjs`. Re-inspect the original if its revision changes.
+run `node scripts/activate-docs.mjs`. Activation obtains the worker lock and freshly
+checks edit access, restricted sharing, the selected tab, original revision and absence
+of an unfinished update before enabling writes. A changed revision invalidates the
+acceptance report; repeat acceptance and review rather than changing its revision field.
 Observe a genuine production journal entry updating the supplied Doc before claiming
 live syncing complete; a no-op against an empty journal is insufficient.
 

@@ -5,6 +5,8 @@ import { planDocument, finishBaselines, inspectDocument, documentModel, desiredH
 import { Google, SCOPES, ensurePrivateEditors } from "../lib/docs/google.ts";
 import { HttpError, encrypt, decrypt } from "../lib/docs/server.ts";
 import { recoveryDecision } from "../lib/docs/recovery.ts";
+import { validateActivationReport, validateActivationConnection } from "../lib/docs/activation.ts";
+import { DOCUMENT_ID } from "../lib/docs/server.ts";
 import { DocumentFixture } from "./docs-fixture.ts";
 import type { Row } from "../lib/journal.ts";
 import type { Baseline, Resolution } from "../lib/docs/types.ts";
@@ -12,6 +14,17 @@ import type { Baseline, Resolution } from "../lib/docs/types.ts";
 const connection = "11111111-1111-4111-8111-111111111111";
 const row = (date = "2026-01-01", caption = "Portrait memory"): Row => ({ id: randomUUID(), photo_date: date, caption, image_key: "private/photo.png", author_email: "feranmidyro@gmail.com", created_at: "2026-01-01T00:00:00Z" });
 const photo = async (entry: Row) => ({ key: entry.id + ".png", width: 300, height: 600 });
+test("activation requires genuine passed checks and a still-inspected unchanged document", () => {
+  const report = { automated: "passed", both_editor_permissions: "passed", actual_google_signins: "passed", rendered_layout: "passed", original_id: DOCUMENT_ID, original_revision: "reviewed-revision", connection_id: connection, tested_at: "2026-09-30T12:00:00Z" };
+  const selected = { id: connection, document_id: DOCUMENT_ID, enabled: false, inspected_at: report.tested_at, state: "awaiting_test" };
+  validateActivationReport(report);
+  validateActivationConnection(report, selected, report.original_revision);
+  for (const field of ["automated", "both_editor_permissions", "actual_google_signins", "rendered_layout"]) assert.throws(() => validateActivationReport({ ...report, [field]: "pending" }));
+  assert.throws(() => validateActivationReport({ ...report, original_revision: undefined }));
+  assert.throws(() => validateActivationReport({ ...report, tested_at: "invalid" }));
+  assert.throws(() => validateActivationConnection(report, selected, "edited-after-review"));
+  for (const patch of [{ enabled: true }, { state: "document_selection_required" }, { inspected_at: null }, { id: randomUUID() }, { document_id: "another-document" }]) assert.throws(() => validateActivationConnection(report, { ...selected, ...patch }, report.original_revision));
+});
 function journal() {
   const fixture = new DocumentFixture(); let baselines: Baseline[] = [];
   const plan = async (desired: Map<string, Row | null>, resolutions?: Map<string, Resolution>) => planDocument({ document: fixture.document(), connection, operation: randomUUID(), desired, baselines, resolutions, allowCreateRegion: true, photo });
